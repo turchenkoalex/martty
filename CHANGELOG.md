@@ -5,6 +5,10 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+### Changed
+
+- **Headings are all one color.** Every level is drawn in the blue of your theme; H1 was magenta and H3–H6 had colors of their own. Levels still differ by size and underline.
+
 ## [0.1.6] - 2026-11-22
 
 ### New

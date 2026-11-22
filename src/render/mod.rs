@@ -48,6 +48,10 @@ pub use span::visible_controls;
 use span::{Pen, Span};
 use table::Table;
 
+/// Palette color of every heading, H1 to H6: blue. Levels differ by size and
+/// underline, not by color.
+pub const HEADING_COLOR: u8 = 4;
+
 const ACCENT: Color = Color::Ansi(6);
 const LINK: Color = Color::Ansi(4);
 const BULLETS: [&str; 3] = ["•", "◦", "▪"];
@@ -107,8 +111,8 @@ pub struct HeadingImages {
     pub font: HeadingFont,
     /// Cell size in pixels, `(width, height)`.
     pub cell: (u32, u32),
-    /// Colors for H1, H2 and H3.
-    pub colors: [Rgb; 3],
+    /// The color of every heading, palette color [`HEADING_COLOR`].
+    pub color: Rgb,
 }
 
 pub struct Images {

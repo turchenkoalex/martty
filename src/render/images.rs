@@ -161,10 +161,11 @@ impl Renderer<'_> {
         let Some(h) = &cfg.headings else {
             return false;
         };
-        let (scale, color) = match level {
-            HeadingLevel::H1 => (2.0, h.colors[0]),
-            HeadingLevel::H2 => (1.5, h.colors[1]),
-            HeadingLevel::H3 => (1.25, h.colors[2]),
+        let color = h.color;
+        let scale = match level {
+            HeadingLevel::H1 => 2.0,
+            HeadingLevel::H2 => 1.5,
+            HeadingLevel::H3 => 1.25,
             _ => return false,
         };
         let text: String = spans.iter().map(|s| s.text.as_str()).collect();

@@ -168,7 +168,7 @@ fn heading_config() -> Config {
         headings: Some(HeadingImages {
             font: HeadingFont::load().unwrap_or_else(|| panic!("font")),
             cell: (10, 20),
-            colors: [(255, 0, 255), (0, 0, 255), (0, 255, 255)],
+            color: (0, 0, 255),
         }),
         ..images_config()
     }
