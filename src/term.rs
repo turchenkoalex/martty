@@ -4,7 +4,7 @@
 //! - kitty text sizing protocol (OSC 66): print a `w=2` space and check
 //!   via cursor position report whether the cursor moved by two cells;
 //! - foreground/background colors (OSC 10/11) to derive panel colors;
-//! - palette colors 4–6 (OSC 4) so image headings match the theme;
+//! - palette colors 1–6 (OSC 4) so image headings and diagrams match the theme;
 //! - kitty graphics support (`a=q` query) and cell size in pixels (CSI 16 t);
 //! - DA1 as a sentinel, since every terminal answers it.
 
@@ -51,7 +51,7 @@ pub struct Size {
 }
 
 const QUERY: &[u8] = b"\r\x1b]66;w=2; \x07\x1b[6n\x1b]10;?\x1b\\\x1b]11;?\x1b\\\
-    \x1b]4;4;?\x1b\\\x1b]4;5;?\x1b\\\x1b]4;6;?\x1b\\\
+    \x1b]4;1;?\x1b\\\x1b]4;2;?\x1b\\\x1b]4;3;?\x1b\\\x1b]4;4;?\x1b\\\x1b]4;5;?\x1b\\\x1b]4;6;?\x1b\\\
     \x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[16t\x1b[c";
 const TIMEOUT: Duration = Duration::from_millis(500);
 

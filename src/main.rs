@@ -164,29 +164,33 @@ fn config(
             colors: [5, 4, 6].map(|i| caps.palette[i].unwrap_or(fg)),
         })
     });
-    let diagrams = cell.map(|cell| Diagrams {
-        palette: mermaid::Palette {
-            bg,
-            fg,
-            panel: panel_rgb(bg, fg),
-            accent: caps.palette[4].unwrap_or(fg),
-        },
-        cell,
-        // Full screen, a diagram at zoom 1 fills the screen above the pager
-        // status line. In the document it keeps the terminal's text size and
-        // the image height cap; a click opens it larger.
-        max_rows: if fullscreen {
-            u32::try_from(size.rows.saturating_sub(1))
-                .unwrap_or(u32::MAX)
-                .clamp(1, kitty::MAX_ROWS)
-        } else {
-            max_rows
-        },
-        zoom,
-        max_upscale: if fullscreen { f32::INFINITY } else { 1.0 },
-        // The pager centres a full-screen diagram itself.
-        center: !fullscreen,
-    });
+    // Without the feature, mermaid blocks are shown as code.
+    let diagrams = cell
+        .filter(|_| cfg!(feature = "mermaid"))
+        .map(|cell| Diagrams {
+            palette: mermaid::Palette {
+                bg,
+                fg,
+                panel: panel_rgb(bg, fg),
+                accent: caps.palette[4].unwrap_or(fg),
+                ansi: std::array::from_fn(|i| caps.palette[i + 1].unwrap_or(fg)),
+            },
+            cell,
+            // Full screen, a diagram at zoom 1 fills the screen above the pager
+            // status line. In the document it keeps the terminal's text size and
+            // the image height cap; a click opens it larger.
+            max_rows: if fullscreen {
+                u32::try_from(size.rows.saturating_sub(1))
+                    .unwrap_or(u32::MAX)
+                    .clamp(1, kitty::MAX_ROWS)
+            } else {
+                max_rows
+            },
+            zoom,
+            max_upscale: if fullscreen { f32::INFINITY } else { 1.0 },
+            // The pager centres a full-screen diagram itself.
+            center: !fullscreen,
+        });
     let images = cell.map(|cell| Images {
         cell,
         max_rows,

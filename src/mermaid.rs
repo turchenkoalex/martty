@@ -1,16 +1,16 @@
-//! Mermaid diagrams: mermaid-rs-renderer lays them out as SVG, resvg
-//! rasterizes that at the terminal's own text size into a box of whole
+//! Mermaid diagrams: merman lays them out as SVG the way Mermaid does,
+//! resvg rasterizes that at the terminal's own text size into a box of whole
 //! cells, and kitty graphics shows it. No browser involved.
 
 use std::sync::OnceLock;
 
-use mermaid_rs_renderer::{RenderOptions, Theme};
 use resvg::{tiny_skia, usvg};
 
+use crate::heading;
 use crate::kitty;
-use crate::term::{Rgb, luma, mix};
+use crate::term::Rgb;
 
-const FONT_FAMILY: &str = "\"JetBrains Mono\", Menlo, monospace";
+static FONT_REGULAR: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf");
 const FONT_SIZE: f32 = 14.0;
 /// Terminal cells are roughly this much taller than the font size.
 const CELL_TO_FONT: f32 = 1.25;
@@ -18,12 +18,16 @@ const CELL_TO_FONT: f32 = 1.25;
 const MAX_PIXELS: f32 = 16_000_000.0;
 
 /// Terminal colors the diagram theme is derived from.
+// Only merman reads the colors; without it, diagrams are never drawn.
+#[cfg_attr(not(feature = "mermaid"), expect(dead_code))]
 pub struct Palette {
     pub bg: Rgb,
     pub fg: Rgb,
     /// Panel behind the diagram (same as code blocks).
     pub panel: Rgb,
     pub accent: Rgb,
+    /// ANSI colors 1–6 (red, green, yellow, blue, magenta, cyan), for pie slices.
+    pub ansi: [Rgb; 6],
 }
 
 pub struct Raster {
@@ -47,9 +51,7 @@ pub fn render(
     zoom: f32,
     max_upscale: f32,
 ) -> Result<Raster, String> {
-    let svg = mermaid_rs_renderer::render_with_options(source, options(palette))
-        .map_err(|e| e.to_string())?;
-    let svg = hide_label_borders(&svg);
+    let svg = to_svg(source, palette)?;
     let tree = usvg::Tree::from_str(&svg, svg_options()).map_err(|e| e.to_string())?;
 
     let (cw, ch) = (cell.0.max(1) as f32, cell.1.max(1) as f32);
@@ -92,83 +94,154 @@ fn svg_options() -> &'static usvg::Options<'static> {
     static OPTIONS: OnceLock<usvg::Options<'static>> = OnceLock::new();
     OPTIONS.get_or_init(|| {
         let mut opt = usvg::Options::default();
+        // System fonts stay as a fallback for glyphs the bundled font lacks.
         opt.fontdb_mut().load_system_fonts();
+        opt.fontdb_mut().load_font_data(FONT_REGULAR.to_vec());
+        opt.fontdb_mut()
+            .load_font_data(heading::FONT_BYTES.to_vec());
         opt
     })
 }
 
-fn options(p: &Palette) -> RenderOptions {
-    let hex = |c: Rgb| format!("#{:02x}{:02x}{:02x}", c.0, c.1, c.2);
-    let muted = hex(mix(p.fg, p.panel, 0.45));
-    let tint = hex(mix(p.bg, p.accent, 0.18));
-    let (bg, fg, panel, accent) = (hex(p.bg), hex(p.fg), hex(p.panel), hex(p.accent));
-
-    let mut t = if luma(p.bg) < 128.0 {
-        Theme::dark()
-    } else {
-        Theme::modern()
-    };
-    t.font_family = FONT_FAMILY.to_owned();
-    t.font_size = FONT_SIZE;
-    t.background.clone_from(&panel);
-    t.primary_color.clone_from(&bg);
-    t.primary_text_color.clone_from(&fg);
-    t.text_color.clone_from(&fg);
-    t.primary_border_color.clone_from(&accent);
-    t.line_color.clone_from(&muted);
-    t.secondary_color.clone_from(&tint);
-    t.tertiary_color.clone_from(&bg);
-    t.edge_label_background.clone_from(&panel);
-    t.cluster_background = hex(mix(p.panel, p.accent, 0.08));
-    t.cluster_border.clone_from(&muted);
-    t.sequence_actor_fill.clone_from(&bg);
-    t.sequence_actor_border.clone_from(&accent);
-    t.sequence_actor_line.clone_from(&muted);
-    t.sequence_note_fill.clone_from(&tint);
-    t.sequence_note_border.clone_from(&muted);
-    t.sequence_activation_fill.clone_from(&tint);
-    t.sequence_activation_border.clone_from(&accent);
-    t.pie_title_text_color.clone_from(&fg);
-    t.pie_legend_text_color.clone_from(&fg);
-    t.pie_stroke_color = panel;
-
-    let mut options = RenderOptions::modern();
-    options.theme = t;
-    options
+#[cfg(not(feature = "mermaid"))]
+fn to_svg(_source: &str, _palette: &Palette) -> Result<String, String> {
+    Err("built without the mermaid feature".to_owned())
 }
 
-/// Edge labels get a backdrop only when they touch their edge, outlined in
-/// the node border color, so one label is framed and the next isn't. The
-/// outline can't be themed separately, so it is dropped here: backdrops
-/// (`<rect … data-label-kind=…>`) keep their fill and lose the stroke.
-fn hide_label_borders(svg: &str) -> String {
-    const OPACITY: &str = "stroke-opacity=\"";
-    let mut out = String::with_capacity(svg.len());
-    let mut rest = svg;
-    while let Some(start) = rest.find("<rect ") {
-        out.push_str(&rest[..start]);
-        rest = &rest[start..];
-        let end = rest.find('>').map_or(rest.len(), |i| i + 1);
-        let (tag, tail) = rest.split_at(end);
-        rest = tail;
-        let value = tag
-            .find(OPACITY)
-            .map(|i| i + OPACITY.len())
-            .and_then(|v| Some(v..v + tag[v..].find('"')?));
-        match value {
-            Some(value) if tag.contains("data-label-kind=") => {
-                out.push_str(&tag[..value.start]);
-                out.push('0');
-                out.push_str(&tag[value.end..]);
-            }
-            _ => out.push_str(tag),
+#[cfg(feature = "mermaid")]
+use merman_svg::to_svg;
+
+#[cfg(feature = "mermaid")]
+mod merman_svg {
+    use merman::svg::{
+        DeterministicTextMeasurer, MeasurementProfileId, TextMeasurementPolicy,
+        TextMeasurementProfile, TextMeasurementProfileIdentity, TextStyle,
+    };
+    use merman::{
+        MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer,
+        SourcePresentationConfig, SvgEnvironment, SvgRequest,
+    };
+    use serde_json::{Map, Value, json};
+    use unicode_width::UnicodeWidthStr;
+
+    use super::{FONT_SIZE, Palette};
+    use crate::term::{Rgb, luma, mix};
+
+    /// Bundled, so the font resvg draws with is the one text was measured in.
+    const FONT_FAMILY: &str = "\"JetBrains Mono\", monospace";
+    /// JetBrains Mono advances every glyph by 600/1000 em.
+    const ADVANCE_EM: f64 = 0.6;
+
+    pub(super) fn to_svg(source: &str, palette: &Palette) -> Result<String, String> {
+        let config = SourcePresentationConfig::from_value(site_config(palette));
+        let renderer =
+            Renderer::new().with_presentation_engine(MermaidEngine::new().with_site_config(config));
+        let request = SvgRequest {
+            environment: SvgEnvironment::deterministic()
+                .with_text_measurement_policy(monospace_measurement()?),
+            ..SvgRequest::default()
+        };
+        match renderer
+            .render(RenderRequest::svg(source, OperationControl::new(), request))
+            .map_err(|e| e.to_string())?
+        {
+            RenderOutput::Svg(Some(svg)) => Ok(svg.svg().to_owned()),
+            _ => Err("not a Mermaid diagram".to_owned()),
         }
     }
-    out.push_str(rest);
-    out
+
+    /// merman sizes boxes from its own font metrics by default; in a
+    /// monospace font a label is exactly its cell count wide.
+    fn monospace_measurement() -> Result<TextMeasurementPolicy, String> {
+        let measurer = DeterministicTextMeasurer::default().with_width_callback(
+            |text: &str, style: &TextStyle| {
+                text.width() as f64 * ADVANCE_EM * style.font_size.max(1.0)
+            },
+        );
+        let id = MeasurementProfileId::new("martty.jetbrains-mono").map_err(|e| e.to_string())?;
+        let identity = TextMeasurementProfileIdentity::new(id, "advance-600".to_owned())
+            .map_err(|e| e.to_string())?;
+        Ok(TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity, measurer,
+        )))
+    }
+
+    /// Mermaid's `base` theme with every color taken from the terminal
+    /// palette. Labels are plain SVG text: resvg can't draw the HTML that
+    /// Mermaid puts in `<foreignObject>` by default.
+    fn site_config(p: &Palette) -> Value {
+        let hex = |c: Rgb| format!("#{:02x}{:02x}{:02x}", c.0, c.1, c.2);
+        let muted = hex(mix(p.fg, p.panel, 0.45));
+        let tint = hex(mix(p.bg, p.accent, 0.18));
+        let cluster = hex(mix(p.panel, p.accent, 0.08));
+        let (bg, fg, panel, accent) = (hex(p.bg), hex(p.fg), hex(p.panel), hex(p.accent));
+        let colors = [
+            ("background", &panel),
+            ("primaryColor", &bg),
+            ("primaryTextColor", &fg),
+            ("primaryBorderColor", &accent),
+            ("secondaryColor", &tint),
+            ("secondaryTextColor", &fg),
+            ("secondaryBorderColor", &muted),
+            ("tertiaryColor", &bg),
+            ("tertiaryTextColor", &fg),
+            ("tertiaryBorderColor", &muted),
+            ("mainBkg", &bg),
+            ("nodeBorder", &accent),
+            ("nodeTextColor", &fg),
+            ("textColor", &fg),
+            ("titleColor", &fg),
+            ("lineColor", &muted),
+            ("defaultLinkColor", &muted),
+            ("edgeLabelBackground", &panel),
+            ("clusterBkg", &cluster),
+            ("clusterBorder", &muted),
+            ("noteBkgColor", &tint),
+            ("noteTextColor", &fg),
+            ("noteBorderColor", &muted),
+            ("actorBkg", &bg),
+            ("actorBorder", &accent),
+            ("actorTextColor", &fg),
+            ("actorLineColor", &muted),
+            ("signalColor", &fg),
+            ("signalTextColor", &fg),
+            ("labelBoxBkgColor", &bg),
+            ("labelBoxBorderColor", &accent),
+            ("labelTextColor", &fg),
+            ("loopTextColor", &fg),
+            ("activationBkgColor", &tint),
+            ("activationBorderColor", &accent),
+            ("pieTitleTextColor", &fg),
+            ("pieSectionTextColor", &bg),
+            ("pieLegendTextColor", &fg),
+            ("pieStrokeColor", &panel),
+            ("pieOuterStrokeColor", &muted),
+            ("attributeBackgroundColorOdd", &bg),
+            ("attributeBackgroundColorEven", &panel),
+        ];
+        let mut vars: Map<String, Value> = colors
+            .into_iter()
+            .map(|(key, color)| (key.to_owned(), Value::from(color.as_str())))
+            .collect();
+        vars.insert("darkMode".to_owned(), Value::from(luma(p.bg) < 128.0));
+        vars.insert("fontFamily".to_owned(), Value::from(FONT_FAMILY));
+        vars.insert("fontSize".to_owned(), Value::from(format!("{FONT_SIZE}px")));
+        for (i, &color) in p.ansi.iter().enumerate() {
+            vars.insert(format!("pie{}", i + 1), Value::from(hex(color)));
+            // Class, state and ER nodes take their fill from the cScale ramp.
+            vars.insert(format!("cScale{i}"), Value::from(bg.as_str()));
+            vars.insert(format!("cScalePeer{i}"), Value::from(accent.as_str()));
+        }
+        json!({
+            "theme": "base",
+            "htmlLabels": false,
+            "flowchart": { "htmlLabels": false },
+            "themeVariables": vars,
+        })
+    }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mermaid"))]
 mod tests {
     use super::*;
 
@@ -177,6 +250,14 @@ mod tests {
         fg: (0xdc, 0xdf, 0xe4),
         panel: (0x35, 0x39, 0x40),
         accent: (0x61, 0xaf, 0xef),
+        ansi: [
+            (0xe0, 0x6c, 0x75),
+            (0x98, 0xc3, 0x79),
+            (0xe5, 0xc0, 0x7b),
+            (0x61, 0xaf, 0xef),
+            (0xc6, 0x78, 0xdd),
+            (0x56, 0xb6, 0xc2),
+        ],
     };
 
     #[test]
@@ -220,21 +301,6 @@ mod tests {
                 2.0
             )
             .is_err()
-        );
-    }
-
-    #[test]
-    fn hide_label_borders_should_only_touch_label_backdrops() {
-        let svg = concat!(
-            r#"<rect x="0" stroke-opacity="1"/>"#,
-            r#"<rect data-label-kind="center" fill-opacity="0.90" stroke-opacity="0.30"/>"#,
-        );
-        assert_eq!(
-            hide_label_borders(svg),
-            concat!(
-                r#"<rect x="0" stroke-opacity="1"/>"#,
-                r#"<rect data-label-kind="center" fill-opacity="0.90" stroke-opacity="0"/>"#,
-            )
         );
     }
 }

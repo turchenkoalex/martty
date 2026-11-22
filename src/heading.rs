@@ -6,7 +6,7 @@ use fontdue::{Font, FontSettings};
 
 use crate::term::Rgb;
 
-static FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono-Bold.ttf");
+pub static FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono-Bold.ttf");
 
 pub struct HeadingFont(Font);
 

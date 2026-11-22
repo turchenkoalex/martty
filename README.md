@@ -26,7 +26,7 @@ of asterisks.
   terminal's palette, so they suit both light and dark themes.
 - 📜 **Built-in pager.** Scrolling, search, mouse wheel, zoomable and pannable diagrams,
   and live re-layout when the window is resized.
-- 🪶 **Small.** A single static binary with a handful of dependencies.
+- 🪶 **Self-contained.** A single static binary: no browser, no Node, no runtime to install.
 
 ## Supported Markdown
 
@@ -52,7 +52,7 @@ of asterisks.
 ## Installation
 
 martty is not published yet, so build it from source. You need a recent stable Rust
-toolchain with edition 2024 support (Rust 1.85+).
+toolchain with edition 2024 support (Rust 1.100+).
 
 ```sh
 git clone <repo-url> martty
@@ -67,11 +67,18 @@ cargo build --release
 ./target/release/martty demo.md
 ```
 
-Syntax highlighting adds about 1 MB to the binary and builds the Oniguruma C library, so it
-needs a C compiler. To leave it out:
+Two optional features are on by default:
+
+| Feature | Adds | Without it |
+|---|---|---|
+| `mermaid` | Mermaid diagrams via merman, about 10 MB | ` ```mermaid ` blocks show as code |
+| `highlight` | Syntax highlighting via syntect, about 1 MB; builds the Oniguruma C library, so it needs a C compiler | Code blocks in one color |
+
+To leave both out, or pick one back:
 
 ```sh
 cargo install --path . --no-default-features
+cargo install --path . --no-default-features --features highlight
 ```
 
 ## Usage
@@ -149,7 +156,7 @@ flowchart LR
     MD[Markdown] --> P[pulldown-cmark]
     P --> R{Block}
     R -->|text| T[ANSI + OSC 8]
-    R -->|mermaid| M[mermaid-rs-renderer] --> S[resvg]
+    R -->|mermaid| M[merman] --> S[resvg]
     R -->|image| I[PNG]
     R -->|H1–H3| F[fontdue]
     S --> K[kitty graphics<br/>Unicode placeholders]
@@ -197,7 +204,7 @@ See [ROADMAP.md](ROADMAP.md) for planned work, in Russian: more image formats, l
 
 - [Ghostty](https://ghostty.org), the terminal this is built for
 - [pulldown-cmark](https://github.com/pulldown-cmark/pulldown-cmark) for Markdown parsing
-- [mermaid-rs-renderer](https://crates.io/crates/mermaid-rs-renderer) and
+- [merman](https://github.com/Latias94/merman) and
   [resvg](https://github.com/linebender/resvg) for diagrams
 - [fontdue](https://github.com/mooman219/fontdue) for glyph rasterization
 - [syntect](https://github.com/trishume/syntect) for syntax highlighting

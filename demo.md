@@ -291,7 +291,7 @@ HTML image:
 ```mermaid
 flowchart LR
     A[Markdown] --> B{Mermaid?}
-    B -->|yes| C[mmdr]
+    B -->|yes| C[merman]
     B -->|no| D[Code block]
     C --> E[resvg] --> F((Ghostty))
     D --> F

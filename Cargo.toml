@@ -2,23 +2,27 @@
 name = "martty"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.100"
 license = "Apache-2.0"
 
 [dependencies]
 fontdue = "0.9.5"
 libc = "0.2.191"
-mermaid-rs-renderer = { version = "0.3.1", default-features = false }
+merman = { version = "0.11.0", default-features = false, features = ["svg", "diagram-flowchart", "diagram-sequence", "diagram-class", "diagram-state", "diagram-er", "diagram-pie", "diagram-gantt", "diagram-journey", "diagram-git-graph", "diagram-timeline", "diagram-xychart", "diagram-quadrant-chart", "diagram-requirement"], optional = true }
 miniz_oxide = "0.9.1"
 pulldown-cmark = { version = "0.13.6", default-features = false }
 resvg = { version = "0.50.0", default-features = false, features = ["text", "system-fonts"] }
+serde_json = { version = "1.0.154", optional = true }
 # Oniguruma, not fancy-regex: compiling a grammar on first use is ~7× faster.
 syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "regex-onig"], optional = true }
 unicode-width = "0.2.3"
 
 [features]
-default = ["highlight"]
+default = ["highlight", "mermaid"]
 # Syntax highlighting in code blocks (syntect, about 1 MB).
 highlight = ["dep:syntect"]
+# Mermaid diagrams (merman, about 10 MB): without it they show as code.
+mermaid = ["dep:merman", "dep:serde_json"]
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }

@@ -46,7 +46,7 @@ src/
 ├── term.rs        # capability probe (one round-trip), raw mode, window size
 ├── kitty.rs       # kitty graphics transmission and Unicode placeholders
 ├── diacritics.rs  # generated row/column diacritics table, don't edit by hand
-├── mermaid.rs     # mermaid-rs-renderer → SVG → resvg → kitty
+├── mermaid.rs     # merman → SVG → resvg → kitty (feature `mermaid`)
 ├── heading.rs     # H1–H3 rasterized with fontdue + bundled JetBrains Mono
 └── pager/         # alternate-screen pager
     ├── mod.rs     # `run` loop, view stack, relayout, terminal enter/leave

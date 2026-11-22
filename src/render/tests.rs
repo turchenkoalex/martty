@@ -251,6 +251,7 @@ fn render_should_highlight_marked_text_only_in_pairs() {
     assert!(out.contains("\x1b[0;38;5;0;48;5;3mb"), "{out:?}");
 }
 
+#[cfg(feature = "mermaid")]
 fn diagram_indent(center: bool) -> Option<usize> {
     let cfg = Config {
         width: 200,
@@ -260,6 +261,7 @@ fn diagram_indent(center: bool) -> Option<usize> {
                 fg: (255, 255, 255),
                 panel: (30, 30, 30),
                 accent: (0, 0, 255),
+                ansi: [(255, 0, 0); 6],
             },
             cell: (10, 20),
             max_rows: 20,
@@ -275,6 +277,7 @@ fn diagram_indent(center: bool) -> Option<usize> {
     Some(row.prefix_len)
 }
 
+#[cfg(feature = "mermaid")]
 #[test]
 fn render_should_center_small_diagrams_when_asked() {
     let centered = diagram_indent(true).unwrap_or_default();
