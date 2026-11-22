@@ -45,12 +45,16 @@ jobs:
 
       - run: cargo build --release --locked --target ${{ matrix.target }}
 
-      # arm64 macOS kills unsigned binaries. The linker signs ad hoc and the
-      # signature survives `strip`; check it, so a toolchain change can't
-      # ship a binary that won't start. Ad hoc isn't a Developer ID: a file
+      # arm64 macOS kills unsigned binaries. The linker signs arm64 ad hoc
+      # but leaves x86_64 unsigned, so sign both here (`--force` replaces the
+      # linker's signature) and check it, so a toolchain change can't ship a
+      # binary that won't start. Ad hoc isn't a Developer ID: a file
       # downloaded with a browser still needs its quarantine flag removed.
-      - name: Check the signature
-        run: codesign --verify --verbose target/${{ matrix.target }}/release/martty
+      - name: Sign ad hoc
+        run: |
+          bin=target/${{ matrix.target }}/release/martty
+          codesign --force --sign - "$bin"
+          codesign --verify --verbose "$bin"
 
       - name: Smoke test
         if: matrix.target == 'aarch64-apple-darwin'
