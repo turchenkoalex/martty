@@ -21,6 +21,9 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --check
 ```
 
+CI (`.github/workflows/ci.yml`) runs the last three on every push to `main` and every pull
+request: fmt and clippy on Linux, tests on macOS and Linux. Run them before committing.
+
 Rendering can only be checked by eye in a real Ghostty window. When a change affects
 output, say what to look at in `demo.md` instead of claiming it looks right.
 
