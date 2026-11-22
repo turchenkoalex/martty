@@ -71,6 +71,7 @@ impl Renderer<'_> {
 
     pub(super) fn close_block(&mut self) {
         self.flush_inline();
+        self.reset_html();
         self.pending_blank = true;
     }
 

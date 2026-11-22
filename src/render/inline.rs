@@ -1,6 +1,22 @@
+use std::rc::Rc;
+
+use super::images::PendingImage;
 use super::span::Span;
-use super::{ACCENT, BULLETS, Renderer};
-use crate::style::{Color, Style};
+use super::{ACCENT, BULLETS, LINK, Renderer};
+use crate::style::{Color, Style, Underline};
+
+pub(super) fn link_style(style: &mut Style, url: &str) {
+    style.link = Some(Rc::from(url));
+    style.fg = Some(LINK);
+    style.underline = Underline::Single;
+    style.underline_color = Some(LINK);
+}
+
+/// Highlighted text, as `<mark>` or `==text==`.
+pub(super) fn mark_style(style: &mut Style) {
+    style.bg = Some(Color::Ansi(3));
+    style.fg = Some(Color::Ansi(0));
+}
 
 impl Renderer<'_> {
     pub(super) fn style(&self) -> Style {
@@ -16,6 +32,35 @@ impl Renderer<'_> {
     pub(super) fn push_text(&mut self, text: &str) {
         let style = self.style();
         self.inline.push(Span::new(text, style));
+    }
+
+    /// Opens an image: its alt text follows, shown when the image can't be.
+    pub(super) fn start_image(&mut self, url: &str) {
+        let start = self.inline.len();
+        self.images.push(PendingImage {
+            url: url.to_owned(),
+            alt: start..start,
+        });
+        self.push_style(|s| {
+            s.link = Some(Rc::from(url));
+            s.fg = Some(Color::Ansi(5));
+            s.italic = true;
+        });
+        self.push_text("🖼 ");
+    }
+
+    pub(super) fn end_image_alt(&mut self) {
+        let end = self.inline.len();
+        if let Some(image) = self.images.last_mut() {
+            image.alt.end = end;
+        }
+    }
+
+    pub(super) fn code_style(&self, style: &mut Style) {
+        match self.cfg.code_bg {
+            Some(bg) => style.bg = Some(bg),
+            None => style.fg = Some(Color::Ansi(3)),
+        }
     }
 
     pub(super) fn push_code(&mut self, text: &str) {

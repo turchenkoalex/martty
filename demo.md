@@ -85,6 +85,18 @@ fn main() {
 
 ---
 
+#### HTML
+
+Press <kbd>Ctrl</kbd>+<kbd>C</kbd> to quit. Water is H<sub>2</sub>O, area is r<sup>2</sup>,<br>
+and <mark>this</mark> is highlighted. <!-- comments are hidden -->
+
+<details>
+<summary>Details are shown expanded</summary>
+
+With the summary as a title.
+
+</details>
+
 #### Footnotes
 
 Some claim[^1].

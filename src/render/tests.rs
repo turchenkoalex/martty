@@ -204,3 +204,35 @@ fn render_should_right_align_ordered_list_numbers() {
         " 8. a\n 9. b\n10. c\n    1. x\n    2. y\n"
     );
 }
+
+#[test]
+fn render_should_apply_inline_html_tags() {
+    let md = "H<sub>2</sub>O x<sup>2</sup> <kbd>Ctrl</kbd> <b>b</b><br>next";
+    assert_eq!(render_plain(md), "H₂O x² \u{a0}Ctrl\u{a0} b\nnext\n");
+}
+
+#[test]
+fn render_should_expand_details_with_summary_marker() {
+    let md = "a\n\n<details>\n<summary>More</summary>\n\nHidden\n\n</details>\n\nb";
+    assert_eq!(render_plain(md), "a\n\n▾ More\n\nHidden\n\nb\n");
+}
+
+#[test]
+fn render_should_hide_html_comments_and_unknown_tags() {
+    let md = "a\n\n<!-- one\ntwo -->\n\n<p align=\"center\">x &amp; <span>y</span></p>\n\nb";
+    assert_eq!(render_plain(md), "a\n\nx & y\n\nb\n");
+}
+
+#[test]
+fn render_should_close_unbalanced_html_at_block_end() {
+    let cfg = images_config();
+    let out = render("<b>bold\n\nplain", &cfg);
+    let last = out.lines().last().unwrap_or_default();
+    assert!(!last.contains(";1"), "{last:?}");
+}
+
+#[test]
+fn render_should_fall_back_to_html_img_alt() {
+    let md = "<p><img src=\"nope.png\" alt=\"logo\"></p>";
+    assert_eq!(strip_ansi(&render(md, &images_config())), "🖼 logo\n");
+}

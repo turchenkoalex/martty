@@ -4,6 +4,7 @@
 
 mod blocks;
 mod document;
+mod html;
 mod images;
 mod inline;
 mod layout;
@@ -15,7 +16,6 @@ mod wrap;
 use std::collections::VecDeque;
 use std::mem;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use pulldown_cmark::{
     CodeBlockKind, Event, HeadingLevel, MetadataBlockKind, Options, Parser, Tag, TagEnd,
@@ -23,12 +23,14 @@ use pulldown_cmark::{
 
 use crate::heading::HeadingFont;
 use crate::mermaid;
-use crate::style::{Color, Style, Underline};
+use crate::style::{Color, Style};
 use crate::term::Rgb;
 
 use blocks::{CodeBlock, Table};
 pub use document::{Document, ImageRow, Line};
+use html::OpenTag;
 use images::PendingImage;
+use inline::link_style;
 use layout::Container;
 use span::Span;
 
@@ -144,6 +146,8 @@ struct Renderer<'c> {
     diagrams: Vec<(u32, String)>,
     inline: Vec<Span>,
     styles: Vec<Style>,
+    html_tags: Vec<OpenTag>,
+    in_html_comment: bool,
     containers: Vec<Container>,
     lists: Vec<Option<OrderedList>>,
     list_lengths: VecDeque<u64>,
@@ -169,6 +173,8 @@ impl<'c> Renderer<'c> {
             diagrams: Vec::new(),
             inline: Vec::new(),
             styles: vec![Style::default()],
+            html_tags: Vec::new(),
+            in_html_comment: false,
             containers: Vec::new(),
             lists: Vec::new(),
             list_lengths: VecDeque::new(),
@@ -224,9 +230,8 @@ impl<'c> Renderer<'c> {
             Event::Code(text) | Event::InlineMath(text) | Event::DisplayMath(text) => {
                 self.push_code(&text);
             }
-            Event::Html(text) | Event::InlineHtml(text) => {
-                self.inline.push(Span::new(text.as_ref(), Style::dim()));
-            }
+            Event::Html(text) => self.html(&text, true),
+            Event::InlineHtml(text) => self.html(&text, false),
             Event::FootnoteReference(name) => {
                 self.inline
                     .push(Span::new(format!("[{name}]"), Style::fg(ACCENT)));
@@ -240,7 +245,8 @@ impl<'c> Renderer<'c> {
 
     fn start(&mut self, tag: Tag<'_>) {
         match tag {
-            Tag::Paragraph | Tag::HtmlBlock => self.open_block(),
+            Tag::Paragraph => self.open_block(),
+            Tag::HtmlBlock => self.flush_inline(),
             Tag::Heading { level, .. } => {
                 self.open_block();
                 self.heading = Some(level);
@@ -304,32 +310,16 @@ impl<'c> Renderer<'c> {
             Tag::Emphasis => self.push_style(|s| s.italic = true),
             Tag::Strong => self.push_style(|s| s.bold = true),
             Tag::Strikethrough => self.push_style(|s| s.strike = true),
-            Tag::Link { dest_url, .. } => self.push_style(|s| {
-                s.link = Some(Rc::from(dest_url.as_ref()));
-                s.fg = Some(LINK);
-                s.underline = Underline::Single;
-                s.underline_color = Some(LINK);
-            }),
-            Tag::Image { dest_url, .. } => {
-                let start = self.inline.len();
-                self.images.push(PendingImage {
-                    url: dest_url.to_string(),
-                    alt: start..start,
-                });
-                self.push_style(|s| {
-                    s.link = Some(Rc::from(dest_url.as_ref()));
-                    s.fg = Some(Color::Ansi(5));
-                    s.italic = true;
-                });
-                self.push_text("🖼 ");
-            }
+            Tag::Link { dest_url, .. } => self.push_style(|s| link_style(s, &dest_url)),
+            Tag::Image { dest_url, .. } => self.start_image(&dest_url),
             _ => {}
         }
     }
 
     fn end(&mut self, tag: TagEnd) {
         match tag {
-            TagEnd::Paragraph | TagEnd::HtmlBlock => self.close_block(),
+            TagEnd::Paragraph => self.close_block(),
+            TagEnd::HtmlBlock => self.end_html_block(),
             TagEnd::Heading(_) => {
                 self.render_heading();
                 self.pending_blank = true;
@@ -390,10 +380,7 @@ impl<'c> Renderer<'c> {
             | TagEnd::Link
             | TagEnd::Image => {
                 if tag == TagEnd::Image {
-                    let end = self.inline.len();
-                    if let Some(image) = self.images.last_mut() {
-                        image.alt.end = end;
-                    }
+                    self.end_image_alt();
                 }
                 if self.styles.len() > 1 {
                     self.styles.pop();

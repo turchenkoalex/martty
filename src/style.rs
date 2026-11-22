@@ -38,6 +38,8 @@ pub struct Style {
     pub italic: bool,
     pub dim: bool,
     pub strike: bool,
+    /// Reverse video (SGR 7).
+    pub inverse: bool,
     /// OSC 8 hyperlink target.
     pub link: Option<Rc<str>>,
 }
@@ -73,6 +75,9 @@ impl Style {
             Underline::None => {}
             Underline::Single => out.push_str(";4"),
             Underline::Double => out.push_str(";4:2"),
+        }
+        if self.inverse {
+            out.push_str(";7");
         }
         if self.strike {
             out.push_str(";9");
