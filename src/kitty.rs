@@ -33,19 +33,26 @@ pub fn png_size(data: &[u8]) -> Option<(u32, u32)> {
 }
 
 /// Cell box for an image: natural size, shrunk to fit `max_cols` × `max_rows`
-/// while keeping the aspect ratio.
-pub fn fit(px: (u32, u32), cell: (u32, u32), max_cols: u32, max_rows: u32) -> (u32, u32) {
-    let (pw, ph) = (f64::from(px.0), f64::from(px.1));
+/// while keeping the aspect ratio, then scaled by `zoom`. Zoomed in, it may
+/// overflow the width by up to [`MAX_COL`] columns, for the pager to pan.
+pub fn fit(
+    px: (u32, u32),
+    cell: (u32, u32),
+    max_cols: u32,
+    max_rows: u32,
+    zoom: f32,
+) -> (u32, u32) {
+    let (pw, ph) = (f64::from(px.0.max(1)), f64::from(px.1.max(1)));
     let (cw, ch) = (f64::from(cell.0.max(1)), f64::from(cell.1.max(1)));
-    let mut scale = 1.0_f64;
-    scale = scale.min(f64::from(max_cols) * cw / pw);
-    scale = scale.min(f64::from(max_rows) * ch / ph);
-    let cols = (pw * scale / cw)
-        .ceil()
-        .clamp(1.0, f64::from(max_cols.max(1)));
-    let rows = (ph * scale / ch)
-        .ceil()
-        .clamp(1.0, f64::from(max_rows.max(1)));
+    let fitted = 1.0_f64
+        .min(f64::from(max_cols) * cw / pw)
+        .min(f64::from(max_rows) * ch / ph);
+    let col_cap = max_cols.max(1).saturating_add(MAX_COL);
+    let scale = (fitted * f64::from(zoom))
+        .min(f64::from(col_cap) * cw / pw)
+        .min(f64::from(MAX_ROWS) * ch / ph);
+    let cols = (pw * scale / cw).ceil().clamp(1.0, f64::from(col_cap));
+    let rows = (ph * scale / ch).ceil().clamp(1.0, f64::from(MAX_ROWS));
     // Values are clamped to u32 bounds above.
     (cols as u32, rows as u32)
 }
@@ -64,6 +71,26 @@ pub fn write_rgba(out: &mut String, id: u32, rgba: &[u8], size: (u32, u32), cols
     let packed = miniz_oxide::deflate::compress_to_vec_zlib(rgba, 6);
     let keys = format!("a=T,U=1,i={id},f=32,o=z,s={w},v={h},t=d,q=2,c={cols},r={rows}");
     write_chunked(out, &keys, &packed);
+}
+
+/// Adds a frame to animation `id` (kitty `a=f`): straight RGBA covering the
+/// whole image, shown for `gap_ms`.
+pub fn write_frame(out: &mut String, id: u32, rgba: &[u8], size: (u32, u32), gap_ms: u32) {
+    let (w, h) = size;
+    let packed = miniz_oxide::deflate::compress_to_vec_zlib(rgba, 6);
+    let keys = format!("a=f,i={id},f=32,o=z,s={w},v={h},z={gap_ms},q=2");
+    write_chunked(out, &keys, &packed);
+}
+
+/// Starts animation `id` (kitty `a=a`): sets the first frame's gap and runs
+/// it `plays` times, or forever when `None`.
+pub fn write_animation_start(out: &mut String, id: u32, first_gap_ms: u32, plays: Option<u32>) {
+    // `v` is the loop count plus one; 1 loops forever.
+    let loops = plays.map_or(1, |n| n.saturating_add(1));
+    let _ = write!(
+        out,
+        "\x1b_Ga=a,i={id},r=1,z={first_gap_ms},q=2\x1b\\\x1b_Ga=a,i={id},s=3,v={loops},q=2\x1b\\"
+    );
 }
 
 fn write_chunked(out: &mut String, keys: &str, data: &[u8]) {
@@ -165,17 +192,27 @@ mod tests {
 
     #[test]
     fn fit_should_keep_small_images_at_natural_size() {
-        assert_eq!(fit((100, 40), (10, 20), 80, 30), (10, 2));
+        assert_eq!(fit((100, 40), (10, 20), 80, 30, 1.0), (10, 2));
     }
 
     #[test]
     fn fit_should_shrink_wide_images_to_width() {
-        assert_eq!(fit((2000, 1000), (10, 20), 50, 100), (50, 13));
+        assert_eq!(fit((2000, 1000), (10, 20), 50, 100, 1.0), (50, 13));
     }
 
     #[test]
     fn fit_should_shrink_tall_images_to_height() {
-        assert_eq!(fit((1000, 2000), (10, 20), 80, 10), (10, 10));
+        assert_eq!(fit((1000, 2000), (10, 20), 80, 10, 1.0), (10, 10));
+    }
+
+    #[test]
+    fn fit_should_overflow_width_when_zoomed_in() {
+        assert_eq!(fit((2000, 1000), (10, 20), 50, 100, 2.0), (100, 25));
+    }
+
+    #[test]
+    fn fit_should_shrink_when_zoomed_out() {
+        assert_eq!(fit((100, 40), (10, 20), 80, 30, 0.5), (5, 1));
     }
 
     #[test]

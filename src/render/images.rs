@@ -8,6 +8,7 @@ use super::wrap::wrap;
 use super::{ImageRow, Renderer};
 use crate::kitty;
 use crate::mermaid;
+use crate::picture::Picture;
 use crate::style::{Color, Style};
 
 pub(super) struct PendingImage {
@@ -24,17 +25,17 @@ impl Renderer<'_> {
         let Some(ctx) = &cfg.images else {
             return false;
         };
-        let Some(data) = resolve(&ctx.base_dir, url).and_then(|p| std::fs::read(p).ok()) else {
-            return false;
-        };
-        let Some(px) = kitty::png_size(&data) else {
+        let Some(picture) = load(&cfg.base_dir, url) else {
             return false;
         };
         let max_cols = u32::try_from(self.avail()).unwrap_or(u32::MAX);
-        let (cols, rows) = kitty::fit(px, ctx.cell, max_cols, ctx.max_rows);
-        self.place(cols, rows, 0, |out, id| {
-            kitty::write_png(out, id, &data, cols, rows);
-        });
+        let px = picture.pixels(css_px(ctx.cell));
+        let (cols, rows) = kitty::fit(px, ctx.cell, max_cols, ctx.max_rows, ctx.zoom);
+        let target = (cols * ctx.cell.0, rows * ctx.cell.1);
+        let Some(encoded) = picture.encode(target) else {
+            return false;
+        };
+        self.place(cols, rows, 0, |out, id| encoded.write(out, id, cols, rows));
         true
     }
 
@@ -153,7 +154,24 @@ pub(super) fn image_style(id: u32) -> Style {
     Style::fg(Color::Rgb(r, g, b))
 }
 
-/// Local path for an image URL; remote images are not supported.
+/// Device pixels per CSS pixel, for SVG images: CSS's default 16px font
+/// is taken to be the terminal's font, which is a cell height / 1.25.
+fn css_px(cell: (u32, u32)) -> f32 {
+    cell.1 as f32 / 1.25 / 16.0
+}
+
+/// Reads and recognizes the image at `url`: a local path, or with the
+/// `remote` feature an http(s) URL.
+fn load(base: &Path, url: &str) -> Option<Picture> {
+    if let Some(data) = crate::remote::fetch(url) {
+        let name = url.split(['?', '#']).next().unwrap_or(url);
+        return Picture::new(data, Path::new(name));
+    }
+    let path = resolve(base, url)?;
+    Picture::new(std::fs::read(&path).ok()?, &path)
+}
+
+/// Local path for an image URL; remote URLs give `None`.
 pub(super) fn resolve(base: &Path, url: &str) -> Option<PathBuf> {
     let url = url.strip_prefix("file://").unwrap_or(url);
     if url.contains("://") || url.starts_with("data:") {

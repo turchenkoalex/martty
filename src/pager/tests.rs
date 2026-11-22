@@ -15,6 +15,7 @@ fn text_doc(lines: &[&str]) -> Document {
             .collect(),
         image_ids: Vec::new(),
         diagrams: Vec::new(),
+        headings: Vec::new(),
     }
 }
 
@@ -62,13 +63,6 @@ fn scroll_should_not_go_above_top() {
 }
 
 #[test]
-fn wheel_should_scroll_three_lines() {
-    let mut p = pager(100, 11);
-    p.handle(parse_keys(b"\x1b[<65;1;1M").remove(0));
-    assert_eq!(p.view().top, 3);
-}
-
-#[test]
 fn search_should_jump_to_match_smart_case() {
     let mut doc = text_doc(&["x"; 100]);
     doc.lines[42].text = "Hello World".into();
@@ -90,20 +84,6 @@ fn zoom_in_should_request_relayout() {
 }
 
 #[test]
-fn click_on_diagram_should_open_it() {
-    let mut p = pager_with(diagram_doc(), 11);
-    let action = p.handle(parse_keys(b"\x1b[<0;3;6M").remove(0));
-    assert_eq!(action, Action::Open("graph LR\n A --> B".into()));
-}
-
-#[test]
-fn click_on_text_should_do_nothing() {
-    let mut p = pager_with(diagram_doc(), 11);
-    let action = p.handle(parse_keys(b"\x1b[<0;3;2M").remove(0));
-    assert_eq!(action, Action::Continue);
-}
-
-#[test]
 fn z_should_open_visible_diagram() {
     let mut p = pager_with(diagram_doc(), 11);
     assert!(matches!(p.handle(Key::Char('z')), Action::Open(_)));
@@ -112,8 +92,10 @@ fn z_should_open_visible_diagram() {
 #[test]
 fn esc_should_close_fullscreen_diagram() {
     let mut p = pager_with(diagram_doc(), 11);
-    p.views
-        .push(View::new(text_doc(&["d"]), Some("src".into())));
+    p.views.push(View::new(
+        text_doc(&["d"]),
+        view::Kind::Diagram("src".into()),
+    ));
     assert_eq!(p.handle(Key::Esc), Action::Close);
 }
 
@@ -128,4 +110,95 @@ fn pan_should_stop_at_max_pan() {
         p.handle(Key::Right);
     }
     assert_eq!(p.view().pan, 20);
+}
+
+#[test]
+fn draw_should_erase_rows_before_drawing_them() {
+    // EL after a full-width line would erase its last column (DEC 7 off).
+    let mut frame = String::new();
+    pager_with(text_doc(&["abc"]), 5).draw(&mut frame);
+    assert!(
+        frame.contains("\x1b[1;1H\x1b[0m\x1b[Kabc\x1b[0m"),
+        "{frame:?}"
+    );
+    assert!(!frame.contains("abc\x1b[0m\x1b[K"), "{frame:?}");
+}
+
+fn link_line(url: &str, text: &str) -> String {
+    format!("\x1b]8;;{url}\x1b\\{text}\x1b]8;;\x1b\\")
+}
+
+/// 30 lines with links on lines 2 and 25 and a heading `#far` on line 20.
+fn links_doc() -> Document {
+    let mut doc = text_doc(&["x"; 30]);
+    doc.lines[2].text = link_line("#far", "near");
+    doc.lines[25].text = link_line("https://e.com", "web");
+    doc.headings.push(crate::render::Heading {
+        line: 20,
+        anchor: "far".into(),
+    });
+    doc
+}
+
+fn no_render(_: Layout<'_>, _: Size, _: f32) -> Document {
+    text_doc(&["opened"])
+}
+
+#[test]
+fn tab_should_select_first_link_on_screen_and_enter_follow_it() {
+    let mut p = pager_with(links_doc(), 11);
+    assert_eq!(p.handle(Key::Tab), Action::Continue);
+    assert_eq!(p.view().selected, Some(0));
+    assert_eq!(p.handle(Key::Enter), Action::Follow("#far".into()));
+}
+
+#[test]
+fn tab_should_scroll_to_link_below_the_screen() {
+    let mut p = pager_with(links_doc(), 11);
+    p.handle(Key::Tab);
+    p.handle(Key::Tab);
+    assert_eq!(p.view().selected, Some(1));
+    assert!(p.view().top + 10 > 25, "top {}", p.view().top);
+}
+
+#[test]
+fn esc_should_drop_selection_and_enter_scroll_again() {
+    let mut p = pager_with(links_doc(), 11);
+    p.handle(Key::Tab);
+    p.handle(Key::Esc);
+    assert_eq!(p.view().selected, None);
+    p.handle(Key::Enter);
+    assert_eq!(p.view().top, 1);
+}
+
+#[test]
+fn follow_anchor_should_scroll_heading_to_top() {
+    let mut p = pager_with(links_doc(), 11);
+    p.follow("#far", &mut no_render).ok();
+    assert_eq!(p.view().top, 20);
+}
+
+#[test]
+fn follow_markdown_file_should_open_it_and_backspace_return() {
+    let path = std::env::temp_dir().join(format!("martty-link-{}.md", std::process::id()));
+    std::fs::write(&path, "# hi").ok();
+    let mut p = pager_with(links_doc(), 11);
+    let url = format!("file://{}", path.display());
+    p.follow(&url, &mut no_render).ok();
+    std::fs::remove_file(&path).ok();
+    assert_eq!(p.views.len(), 2);
+    assert!(matches!(p.view().kind, view::Kind::File(_)));
+    assert_eq!(p.handle(Key::Backspace), Action::Close);
+}
+
+#[test]
+fn follow_missing_markdown_file_should_say_so() {
+    let mut p = pager_with(links_doc(), 11);
+    p.follow("file:///nonexistent/x.md", &mut no_render).ok();
+    assert_eq!(p.views.len(), 1);
+    assert!(
+        p.message
+            .as_deref()
+            .is_some_and(|m| m.starts_with("No such file"))
+    );
 }

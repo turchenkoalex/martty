@@ -12,6 +12,8 @@ mod kitty;
 mod math;
 mod mermaid;
 mod pager;
+mod picture;
+mod remote;
 mod render;
 mod style;
 mod term;
@@ -85,6 +87,17 @@ fn run() -> io::Result<()> {
         match layout {
             Layout::Document => {
                 let mut config = config(&caps, size, &base_dir, first_id, zoom, false);
+                config.color = color;
+                render::render(&markdown, &config)
+            }
+            Layout::File(path) => {
+                // A link may point at a file that can't be read; say so in
+                // the view instead of failing the pager.
+                let markdown = std::fs::read_to_string(path).unwrap_or_else(|e| {
+                    format!("> [!CAUTION]\n> Can't read `{}`: {e}\n", path.display())
+                });
+                let dir = path.parent().unwrap_or(Path::new("."));
+                let mut config = config(&caps, size, dir, first_id, zoom, false);
                 config.color = color;
                 render::render(&markdown, &config)
             }
@@ -238,7 +251,7 @@ fn config(
     let images = cell.map(|cell| Images {
         cell,
         max_rows,
-        base_dir: base_dir.to_path_buf(),
+        zoom,
     });
     Config {
         width: size.cols,
@@ -253,6 +266,7 @@ fn config(
         diagrams,
         math,
         first_image_id,
+        base_dir: base_dir.to_path_buf(),
     }
 }
 

@@ -155,7 +155,10 @@ impl Renderer<'_> {
                 self.push_text("\u{a0}");
             }
             "a" => match attr(attrs, "href") {
-                Some(url) => self.open_tag(name, |s| link_style(s, url)),
+                Some(url) => {
+                    let url = super::links::resolve(&self.cfg.base_dir, url);
+                    self.open_tag(name, |s| link_style(s, &url));
+                }
                 None => self.open_tag(name, |_| {}),
             },
             "img" => {
@@ -255,6 +258,18 @@ fn script_char(c: char, sup: bool) -> Option<char> {
 }
 
 /// Value of an attribute, quoted or not.
+/// `src` of every `<img>` tag in a piece of HTML.
+pub(super) fn img_sources(html: &str) -> Vec<&str> {
+    let lower = html.to_ascii_lowercase();
+    lower
+        .match_indices("<img")
+        .filter_map(|(at, _)| {
+            let tag = &html[at + 4..];
+            attr(&tag[..tag.find('>').unwrap_or(tag.len())], "src")
+        })
+        .collect()
+}
+
 fn attr<'a>(attrs: &'a str, name: &str) -> Option<&'a str> {
     let mut rest = attrs;
     while let Some(eq) = rest.find('=') {
@@ -334,6 +349,12 @@ mod tests {
         assert_eq!(attr(attrs, "alt"), Some("a cat"));
         assert_eq!(attr(attrs, "width"), Some("200"));
         assert_eq!(attr(attrs, "href"), None);
+    }
+
+    #[test]
+    fn img_sources_should_find_every_image() {
+        let html = r#"<p><IMG src="a.png"> and <img alt=x src='b.svg'/></p>"#;
+        assert_eq!(img_sources(html), ["a.png", "b.svg"]);
     }
 
     #[test]

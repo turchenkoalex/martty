@@ -3,12 +3,14 @@ use std::fmt::Write as _;
 use unicode_width::UnicodeWidthChar;
 
 use super::Pager;
+use super::links;
+use super::view::Kind;
 
 impl Pager<'_> {
     /// Left and top margins that centre a full-screen diagram.
     pub(super) fn margins(&self) -> (usize, usize) {
         let view = self.view();
-        if view.source.is_none() {
+        if !view.is_diagram() {
             return (0, 0);
         }
         let width = view
@@ -28,21 +30,26 @@ impl Pager<'_> {
         let view = self.view();
         let (left, top_margin) = self.margins();
         out.push_str("\x1b[?2026h");
+        // Each row is erased (EL) before it is drawn, not after: with
+        // autowrap off (DEC 7) the cursor stays on the last column once a
+        // full-width line is written, and EL would erase that column too.
         for row in 0..self.view_rows() {
-            let _ = write!(out, "\x1b[{};1H\x1b[0m", row + 1);
-            let line = row
-                .checked_sub(top_margin)
-                .and_then(|r| view.doc.lines.get(view.top + r));
-            if let Some(line) = line {
+            let _ = write!(out, "\x1b[{};1H\x1b[0m\x1b[K", row + 1);
+            let index = row.checked_sub(top_margin).map(|r| view.top + r);
+            if let Some((index, line)) = index.and_then(|i| Some((i, view.doc.lines.get(i)?))) {
                 let _ = write!(out, "{:left$}", "");
-                out.push_str(&line.panned(view.pan));
+                let text = line.panned(view.pan);
+                match view.selected_range(index) {
+                    Some(range) => out.push_str(&links::highlight(&text, &range)),
+                    None => out.push_str(&text),
+                }
             }
-            out.push_str("\x1b[0m\x1b[K");
+            out.push_str("\x1b[0m");
         }
 
         let _ = write!(
             out,
-            "\x1b[{};1H\x1b[0;7m{}\x1b[0m\x1b[K",
+            "\x1b[{};1H\x1b[0m\x1b[K\x1b[7m{}\x1b[0m",
             self.size.rows.max(1),
             truncate(&self.status(), self.size.cols)
         );
@@ -69,18 +76,32 @@ impl Pager<'_> {
         if view.doc.max_pan() > 0 {
             let _ = write!(extra, "  ←{}/{}→", view.pan, view.doc.max_pan());
         }
-        if view.source.is_some() {
+        if view.is_diagram() {
             return format!(
-                " {} › diagram{extra}  · q/Esc/click back · +/- zoom · hjkl move",
+                " {} › diagram{extra}  · q/Esc back · +/- zoom · hjkl move",
                 self.title
             );
         }
+        if let Some(link) = view.selected.and_then(|i| view.links.get(i)) {
+            return format!(" → {}  · Enter open · Tab next · Esc cancel", link.url);
+        }
+        let title = match &view.kind {
+            Kind::File(path) => path.file_name().map_or_else(
+                || path.display().to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            ),
+            _ => self.title.to_owned(),
+        };
+        let back = if self.views.len() > 1 {
+            " · ⌫ back"
+        } else {
+            ""
+        };
         let total = view.total();
         let last = (view.top + self.view_rows()).min(total);
         let pct = (last * 100).checked_div(total).unwrap_or(100);
         format!(
-            " {}  {}-{}/{}  {pct}%{extra}  · q quit · / search · click/z diagram · +/- zoom",
-            self.title,
+            " {title}  {}-{}/{}  {pct}%{extra}  · q quit{back} · / search · Tab links · z diagram · +/- zoom",
             (view.top + 1).min(total),
             last,
             total

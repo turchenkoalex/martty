@@ -17,15 +17,11 @@ pub(super) enum Key {
     Home,
     End,
     Enter,
+    Tab,
+    /// Shift-Tab (`CSI Z`).
+    BackTab,
     Backspace,
     Esc,
-    /// SGR mouse event; `col`/`row` are 1-based.
-    Mouse {
-        button: u16,
-        col: u16,
-        row: u16,
-        press: bool,
-    },
 }
 
 /// Waits up to `POLL_MS` for input. `None` on timeout.
@@ -62,21 +58,13 @@ pub(super) fn parse_keys(buf: &[u8]) -> Vec<Key> {
                     let fin = buf.get(start + len).copied();
                     i = (start + len + 1).min(buf.len());
                     match (fin, params) {
-                        (Some(f @ (b'M' | b'm')), [b'<', rest @ ..]) => match sgr_mouse(rest) {
-                            Some((button, col, row)) => Key::Mouse {
-                                button,
-                                col,
-                                row,
-                                press: f == b'M',
-                            },
-                            None => continue,
-                        },
                         (Some(b'A'), _) => Key::Up,
                         (Some(b'B'), _) => Key::Down,
                         (Some(b'C'), _) => Key::Right,
                         (Some(b'D'), _) => Key::Left,
                         (Some(b'H'), _) => Key::Home,
                         (Some(b'F'), _) => Key::End,
+                        (Some(b'Z'), _) => Key::BackTab,
                         (Some(b'~'), b"5") => Key::PageUp,
                         (Some(b'~'), b"6") => Key::PageDown,
                         (Some(b'~'), b"1" | b"7") => Key::Home,
@@ -87,6 +75,7 @@ pub(super) fn parse_keys(buf: &[u8]) -> Vec<Key> {
                 _ => Key::Esc,
             },
             b'\r' | b'\n' => Key::Enter,
+            b'\t' => Key::Tab,
             0x7f | 0x08 => Key::Backspace,
             0..0x20 => Key::Ctrl(b),
             _ => {
@@ -112,13 +101,6 @@ pub(super) fn parse_keys(buf: &[u8]) -> Vec<Key> {
     keys
 }
 
-/// `button;col;row` from an SGR mouse report.
-pub(super) fn sgr_mouse(params: &[u8]) -> Option<(u16, u16, u16)> {
-    let s = std::str::from_utf8(params).ok()?;
-    let mut it = s.split(';').map(str::parse::<u16>);
-    Some((it.next()?.ok()?, it.next()?.ok()?, it.next()?.ok()?))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,20 +112,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_keys_should_read_utf8_chars() {
-        let keys = parse_keys("q/ж".as_bytes());
-        assert_eq!(keys, [Key::Char('q'), Key::Char('/'), Key::Char('ж')]);
+    fn parse_keys_should_read_tab_and_shift_tab() {
+        assert_eq!(parse_keys(b"\t\x1b[Z"), [Key::Tab, Key::BackTab]);
     }
 
     #[test]
-    fn parse_keys_should_read_sgr_mouse_press() {
-        let keys = parse_keys(b"\x1b[<0;12;5M");
-        let expected = Key::Mouse {
-            button: 0,
-            col: 12,
-            row: 5,
-            press: true,
-        };
-        assert_eq!(keys, [expected]);
+    fn parse_keys_should_read_utf8_chars() {
+        let keys = parse_keys("q/ж".as_bytes());
+        assert_eq!(keys, [Key::Char('q'), Key::Char('/'), Key::Char('ж')]);
     }
 }

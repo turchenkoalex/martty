@@ -3,7 +3,6 @@ use super::{Action, Pager};
 
 pub(super) const ZOOM_STEP: f32 = 1.25;
 pub(super) const ZOOM_RANGE: (f32, f32) = (0.25, 8.0);
-pub(super) const WHEEL_LINES: isize = 3;
 
 impl Pager<'_> {
     pub(super) fn scroll(&mut self, delta: isize, view_rows: usize) {
@@ -63,9 +62,14 @@ impl Pager<'_> {
         let rows = self.view_rows();
         let page = rows as isize;
         let step = i64::try_from(self.size.cols / 4).unwrap_or(8).max(8);
-        let fullscreen = self.views.len() > 1;
+        let fullscreen = self.view().is_diagram();
         match key {
             Key::Char('q' | 'Q') | Key::Esc if fullscreen => return Action::Close,
+            Key::Esc if self.view().selected.is_some() => self.view_mut().selected = None,
+            Key::Backspace | Key::Char('H') if self.views.len() > 1 => return Action::Close,
+            Key::Tab => self.move_link(true, rows),
+            Key::BackTab => self.move_link(false, rows),
+            Key::Enter if let Some(url) = self.selected_on_screen() => return Action::Follow(url),
             Key::Char('q' | 'Q') | Key::Ctrl(3) => return Action::Quit,
             Key::Char('+' | '=') => return self.zoom_by(ZOOM_STEP),
             Key::Char('-' | '_') => return self.zoom_by(1.0 / ZOOM_STEP),
@@ -82,7 +86,6 @@ impl Pager<'_> {
                     }
                 };
             }
-            Key::Mouse { .. } => return self.mouse(&key, rows),
             Key::Char('h') | Key::Left => self.pan_by(-step),
             Key::Char('l') | Key::Right => self.pan_by(step),
             Key::Char('j' | 'e') | Key::Down | Key::Enter | Key::Ctrl(14) => self.scroll(1, rows),
@@ -101,30 +104,47 @@ impl Pager<'_> {
         Action::Continue
     }
 
-    pub(super) fn mouse(&mut self, key: &Key, rows: usize) -> Action {
-        let &Key::Mouse {
-            button, row, press, ..
-        } = key
-        else {
-            return Action::Continue;
+    /// Selects the next (or previous) link, starting from the screen when
+    /// nothing on it is selected, and scrolls it into view.
+    pub(super) fn move_link(&mut self, forward: bool, rows: usize) {
+        let view = self.view();
+        let (top, bottom) = (view.top, view.top + rows);
+        let current = self.selected_index_on_screen();
+        let next = match current {
+            Some(i) if forward => Some(i + 1).filter(|&n| n < view.links.len()),
+            Some(i) => i.checked_sub(1),
+            None if forward => view.links.iter().position(|l| l.first_line() >= top),
+            None => view.links.iter().rposition(|l| l.first_line() < bottom),
         };
-        // Bits 2–4 are Shift/Meta/Ctrl, bit 5 is motion: ignore modifiers.
-        match button & !0b1_1100 {
-            64 => self.scroll(-WHEEL_LINES, rows),
-            65 => self.scroll(WHEEL_LINES, rows),
-            66 => self.pan_by(-8),
-            67 => self.pan_by(8),
-            0 if press && self.views.len() > 1 => return Action::Close,
-            0 if press => {
-                let (_, top_margin) = self.margins();
-                let line = (usize::from(row).saturating_sub(1 + top_margin)) + self.view().top;
-                if let Some(src) = self.view().diagram_at(line) {
-                    return Action::Open(src.to_owned());
-                }
-            }
-            _ => {}
+        let Some((next, link)) = next.and_then(|n| Some((n, view.links.get(n)?))) else {
+            let none = view.links.is_empty();
+            self.message = Some(if none { "No links" } else { "No more links" }.into());
+            return;
+        };
+        let (first, last) = (link.first_line(), link.last_line());
+        self.view_mut().selected = Some(next);
+        if first < top {
+            self.scroll(-isize::try_from(top - first).unwrap_or(isize::MAX), rows);
+        } else if last >= bottom {
+            self.scroll(
+                isize::try_from(last + 1 - bottom).unwrap_or(isize::MAX),
+                rows,
+            );
         }
-        Action::Continue
+    }
+
+    fn selected_index_on_screen(&self) -> Option<usize> {
+        let view = self.view();
+        let bottom = view.top + self.view_rows();
+        let i = view.selected?;
+        let link = view.links.get(i)?;
+        (link.last_line() >= view.top && link.first_line() < bottom).then_some(i)
+    }
+
+    /// URL of the selected link, when it is on screen.
+    pub(super) fn selected_on_screen(&self) -> Option<String> {
+        let i = self.selected_index_on_screen()?;
+        Some(self.view().links.get(i)?.url.clone())
     }
 
     /// Jumps so the next (or previous) matching line is at the top.

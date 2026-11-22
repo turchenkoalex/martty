@@ -40,6 +40,7 @@ src/
 │   ├── blocks.rs  # headings, code blocks, rules, front matter
 │   ├── table.rs   # tables: column widths, wrapping inside cells
 │   ├── formulas.rs # inline and display math placed as images
+│   ├── links.rs   # link targets (relative → file://), heading anchors
 │   ├── highlight.rs # syntect scopes → palette colors (feature `highlight`)
 │   ├── images.rs  # images, diagrams and image headings placed via kitty
 │   ├── span.rs    # styled text spans and their SGR/OSC 8 output
@@ -48,13 +49,16 @@ src/
 ├── term.rs        # capability probe (one round-trip), raw mode, window size
 ├── kitty.rs       # kitty graphics transmission and Unicode placeholders
 ├── diacritics.rs  # generated row/column diacritics table, don't edit by hand
+├── picture/       # image formats: sniffing, JPEG/GIF/WebP decoding, SVG, downscaling
+├── remote.rs      # http(s) images with a disk cache (feature `remote`)
 ├── mermaid.rs     # merman → SVG → resvg → kitty (feature `mermaid`)
 ├── math.rs        # LaTeX → latex-rust SVG → resvg → kitty (feature `math`)
 ├── heading.rs     # H1–H3 rasterized with fontdue + bundled JetBrains Mono
 └── pager/         # alternate-screen pager
     ├── mod.rs     # `run` loop, view stack, relayout, terminal enter/leave
     ├── view.rs    # one view: document, scroll, pan, zoom, search text
-    ├── keys.rs    # reading the tty, keys and SGR mouse reports
+    ├── keys.rs    # reading the tty and keys
+    ├── links.rs   # links found by OSC 8, Tab selection highlight, opening
     ├── input.rs   # key bindings, scrolling, search, zoom, pan
     └── draw.rs    # frame and status line
 ```
@@ -86,7 +90,7 @@ off and enable only what is used; put heavy optional functionality behind a carg
 - **`unsafe` stays in `term.rs` and `pager/keys.rs`** for the `libc` terminal calls (`poll`,
   `ioctl`, `tcgetattr`/`tcsetattr`). Keep each block to the single call and don't spread it
   to other modules.
-- **Restore the terminal on every exit path**: raw mode, alternate screen, mouse reporting.
+- **Restore the terminal on every exit path**: raw mode, alternate screen, alternate scroll mode.
   Rely on `Drop` guards, not on cleanup at the end of a function.
 - **Width is measured in cells** with `unicode-width`, never in bytes or `char`s.
 - Comments say what the code cannot: why, terminal quirks, protocol details, units (cells

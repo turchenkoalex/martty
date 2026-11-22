@@ -1,33 +1,75 @@
 use unicode_width::UnicodeWidthChar;
 
+use std::path::PathBuf;
+
+use super::links::{self, Link};
 use crate::kitty;
 use crate::render::Document;
+
+/// What a view shows, and so how to lay it out again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Kind {
+    /// The document martty was started with.
+    Document,
+    /// A Markdown file opened from a link.
+    File(PathBuf),
+    /// One diagram, full screen.
+    Diagram(String),
+}
 
 /// One screenful of content with its own scroll, pan and zoom.
 pub(super) struct View {
     pub(super) doc: Document,
     /// Text of each line for searching (images contribute nothing).
     pub(super) plain: Vec<String>,
+    pub(super) links: Vec<Link>,
+    /// Index into `links` of the link Tab moved to.
+    pub(super) selected: Option<usize>,
     pub(super) top: usize,
     /// Horizontal shift of overflowing images, in cells.
     pub(super) pan: u32,
     /// Diagram zoom; 1.0 fits the screen.
     pub(super) zoom: f32,
-    /// Set for a full-screen diagram.
-    pub(super) source: Option<String>,
+    pub(super) kind: Kind,
 }
 
 impl View {
-    pub(super) fn new(doc: Document, source: Option<String>) -> Self {
+    pub(super) fn new(doc: Document, kind: Kind) -> Self {
         let plain = doc.lines.iter().map(|l| plain_text(&l.text)).collect();
+        let links = links::find(&doc.lines);
         Self {
             doc,
             plain,
+            links,
+            selected: None,
             top: 0,
             pan: 0,
             zoom: 1.0,
-            source,
+            kind,
         }
+    }
+
+    pub(super) fn is_diagram(&self) -> bool {
+        matches!(self.kind, Kind::Diagram(_))
+    }
+
+    /// Byte range of the selected link's text on line `index`, if any.
+    pub(super) fn selected_range(&self, index: usize) -> Option<std::ops::Range<usize>> {
+        let link = self.links.get(self.selected?)?;
+        link.parts
+            .iter()
+            .find(|(line, _)| *line == index)
+            .map(|(_, range)| range.clone())
+    }
+
+    /// Line where the heading with this GitHub-style anchor starts.
+    pub(super) fn anchor_line(&self, anchor: &str) -> Option<usize> {
+        let anchor = anchor.to_lowercase();
+        self.doc
+            .headings
+            .iter()
+            .find(|h| h.anchor == anchor)
+            .map(|h| h.line)
     }
 
     pub(super) fn total(&self) -> usize {

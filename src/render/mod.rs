@@ -13,6 +13,7 @@ mod html;
 mod images;
 mod inline;
 mod layout;
+mod links;
 mod span;
 mod table;
 #[cfg(test)]
@@ -34,7 +35,7 @@ use crate::style::{Color, Style};
 use crate::term::Rgb;
 
 use blocks::CodeBlock;
-pub use document::{Document, ImageRow, Line};
+pub use document::{Document, Heading, ImageRow, Line};
 use html::OpenTag;
 use images::PendingImage;
 use inline::link_style;
@@ -70,6 +71,9 @@ pub struct Config {
     pub math: Option<MathImages>,
     /// Kitty image ids are allocated upwards from here (24-bit, non-zero).
     pub first_image_id: u32,
+    /// Relative image paths and links resolve against this (the Markdown
+    /// file's directory).
+    pub base_dir: PathBuf,
 }
 
 pub struct Diagrams {
@@ -103,8 +107,9 @@ pub struct Images {
     /// Cell size in pixels, `(width, height)`.
     pub cell: (u32, u32),
     pub max_rows: u32,
-    /// Relative image paths resolve against this (the markdown file's dir).
-    pub base_dir: PathBuf,
+    /// 1.0 fits the available width and `max_rows`; above that images
+    /// overflow and can be panned.
+    pub zoom: f32,
 }
 
 pub fn render(markdown: &str, config: &Config) -> Document {
@@ -122,12 +127,28 @@ pub fn render(markdown: &str, config: &Config) -> Document {
     // after an escaped colon is still one piece for shortcode replacement.
     let events: Vec<Event<'_>> =
         TextMergeStream::new(Parser::new_ext(&markdown, options)).collect();
+    if config.images.is_some() {
+        crate::remote::prefetch(&image_urls(&events));
+    }
     let mut renderer = Renderer::new(config);
     renderer.list_lengths = ordered_list_lengths(&events);
     for event in events {
         renderer.event(event);
     }
     renderer.finish()
+}
+
+/// Every image a document references, from Markdown and from `<img>` tags.
+fn image_urls<'a>(events: &'a [Event<'_>]) -> Vec<&'a str> {
+    let mut urls = Vec::new();
+    for event in events {
+        match event {
+            Event::Start(Tag::Image { dest_url, .. }) => urls.push(dest_url.as_ref()),
+            Event::Html(html) | Event::InlineHtml(html) => urls.extend(html::img_sources(html)),
+            _ => {}
+        }
+    }
+    urls
 }
 
 /// Item count of every ordered list, in the order the lists start, so
@@ -172,6 +193,8 @@ struct Renderer<'c> {
     line_no: usize,
     image_rows: Vec<(usize, ImageRow)>,
     diagrams: Vec<(u32, String)>,
+    headings: Vec<Heading>,
+    anchors: links::Anchors,
     inline: Vec<Span>,
     styles: Vec<Style>,
     html_tags: Vec<OpenTag>,
@@ -200,6 +223,8 @@ impl<'c> Renderer<'c> {
             line_no: 0,
             image_rows: Vec::new(),
             diagrams: Vec::new(),
+            headings: Vec::new(),
+            anchors: links::Anchors::default(),
             inline: Vec::new(),
             styles: vec![Style::default()],
             html_tags: Vec::new(),
@@ -240,6 +265,7 @@ impl<'c> Renderer<'c> {
             lines,
             image_ids: self.image_ids,
             diagrams: self.diagrams,
+            headings: self.headings,
         }
     }
 
@@ -349,7 +375,10 @@ impl<'c> Renderer<'c> {
             Tag::Emphasis => self.push_style(|s| s.italic = true),
             Tag::Strong => self.push_style(|s| s.bold = true),
             Tag::Strikethrough => self.push_style(|s| s.strike = true),
-            Tag::Link { dest_url, .. } => self.push_style(|s| link_style(s, &dest_url)),
+            Tag::Link { dest_url, .. } => {
+                let url = links::resolve(&self.cfg.base_dir, &dest_url);
+                self.push_style(|s| link_style(s, &url));
+            }
             Tag::Image { dest_url, .. } => self.start_image(&dest_url),
             _ => {}
         }

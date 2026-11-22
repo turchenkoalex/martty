@@ -4,6 +4,7 @@
 
 use resvg::{tiny_skia, usvg};
 
+use crate::picture::svg;
 use crate::term::Rgb;
 
 /// Terminal cells are roughly this much taller than the font size (as in
@@ -129,7 +130,7 @@ fn rasterize(
     let transform = tiny_skia::Transform::from_row(fit, 0.0, 0.0, fit, offset.0, offset.1);
     resvg::render(&svg.tree, transform, &mut pixmap.as_mut());
     let mut rgba = pixmap.take();
-    unpremultiply(&mut rgba);
+    svg::unpremultiply(&mut rgba);
     Some(Raster {
         width,
         height,
@@ -137,18 +138,6 @@ fn rasterize(
         rows,
         rgba,
     })
-}
-
-/// tiny-skia keeps premultiplied alpha; kitty's `f=32` expects straight.
-fn unpremultiply(rgba: &mut [u8]) {
-    for px in rgba.as_chunks_mut::<4>().0 {
-        let a = u16::from(px[3]);
-        if a > 0 && a < 255 {
-            for c in &mut px[..3] {
-                *c = u8::try_from(u16::from(*c) * 255 / a).unwrap_or(u8::MAX);
-            }
-        }
-    }
 }
 
 #[cfg(all(test, feature = "math"))]
@@ -182,12 +171,5 @@ mod tests {
     #[test]
     fn unknown_command_should_not_render() {
         assert!(display(r"\notacommand x", (255, 255, 255), CELL).is_none());
-    }
-
-    #[test]
-    fn unpremultiply_should_restore_color_of_half_covered_pixel() {
-        let mut px = [100, 50, 0, 128];
-        unpremultiply(&mut px);
-        assert_eq!(px, [199, 99, 0, 128]);
     }
 }

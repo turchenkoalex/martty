@@ -18,7 +18,8 @@ and uses everything it can do: kitty graphics with Unicode placeholders, OSC 8 h
 synchronized output and theme color queries. Your README looks like a document, not a dump
 of asterisks.
 
-- 🖼️ **Images inline.** PNG files are drawn with the kitty graphics protocol.
+- 🖼️ **Images inline.** PNG, JPEG, GIF, WebP and SVG, drawn with the kitty graphics
+  protocol; animated GIF and WebP play as kitty animations.
 - 📊 **Mermaid diagrams.** Flowcharts, sequence diagrams, pie charts and more, rendered
   locally without a browser and colored to match your Ghostty theme.
 - 🔠 **Big headings.** H1–H3 are drawn at large sizes with JetBrains Mono.
@@ -36,7 +37,7 @@ of asterisks.
 |---|---|
 | Headings | H1–H3 drawn as large images, H4–H6 styled as text |
 | Emphasis | **bold**, *italic*, ~~strikethrough~~, `inline code`, `==highlight==` |
-| Links | Clickable through OSC 8 |
+| Links | Clickable through OSC 8 (relative paths become `file://` URLs); in the pager also by `Tab` and `Enter` |
 | Lists | Nested, ordered (numbers aligned on the dot), and task lists `- [x]` |
 | Block quotes | Drawn with a left bar, including images inside quotes |
 | Alerts | GitHub `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` with a colored bar and title |
@@ -44,7 +45,7 @@ of asterisks.
 | Tables | Column alignment (`:---:`, `---:`); a table wider than the screen shrinks its columns by content and wraps the text in its cells |
 | Footnotes | `[^1]` style |
 | Definition lists | `Term` followed by `: definition` lines |
-| Images | Local PNG; a missing image falls back to its alt text |
+| Images | PNG, JPEG, GIF, WebP and SVG, local or (with the `remote` feature) from http(s); animated GIF and WebP play; a missing or unreadable image falls back to its alt text |
 | Mermaid | ` ```mermaid ` blocks are rendered as diagrams, centered, with text at the terminal's size; click one to open it full screen |
 | Math | `$…$` inline, sitting on the text baseline; `$$…$$` and ` ```math ` blocks centered on their own rows. A formula latex-rust can't render shows as code |
 | Rules | `---` |
@@ -85,6 +86,16 @@ cargo install --path . --no-default-features
 cargo install --path . --no-default-features --features highlight
 ```
 
+One more is off by default, since with it viewing a document makes network requests:
+
+| Feature | Adds |
+|---|---|
+| `remote` | Images from `http(s)://` URLs via ureq and rustls. They are fetched in parallel before the document is shown (10 s timeout) and cached for a day in `~/Library/Caches/martty` (macOS) or `$XDG_CACHE_HOME/martty`; a stale copy is used when the network fails |
+
+```sh
+cargo install --path . --features remote
+```
+
 ## Usage
 
 ```sh
@@ -123,7 +134,7 @@ The pager follows `less` conventions.
 
 | Keys | Action |
 |---|---|
-| `j` `e` `↓` `Enter` `Ctrl-N` | Scroll down one line |
+| `j` `e` `↓` `Enter` `Ctrl-N` | Scroll down one line (`Enter` opens the selected link) |
 | `k` `y` `↑` `Ctrl-P` | Scroll up one line |
 | `Space` `f` `PgDn` `Ctrl-F` | Page down |
 | `b` `PgUp` `Ctrl-B` | Page up |
@@ -132,14 +143,18 @@ The pager follows `less` conventions.
 | `/` | Search (smart case: case-sensitive only if the query has uppercase letters) |
 | `n` / `N` | Next / previous match |
 | `h` `←` / `l` `→` | Pan wide images and diagrams left / right |
-| `+` `=` / `-` `_` / `0` | Zoom diagrams in / out / reset |
-| `z` or click | Open the diagram on screen full screen |
+| `+` `=` / `-` `_` / `0` | Zoom images and diagrams in / out / reset |
+| `Tab` / `Shift-Tab` | Select the next / previous link, scrolling to it |
+| `Enter` | Open the selected link: `#heading` jumps to it, a relative `.md` file opens in the pager, anything else opens with `open` (`xdg-open` on Linux) |
+| `Backspace` `H` | Go back from an opened file or a full-screen diagram |
+| `Esc` | Drop the link selection |
+| `z` | Open the diagram on screen full screen |
 | `Esc` `q` | Close the full-screen diagram |
 | `q` `Ctrl-C` | Quit |
-| Mouse wheel | Scroll (horizontal wheel pans) |
+| Mouse wheel | Scroll |
 
 > [!TIP]
-> The pager captures the mouse, so to select text hold **Shift** while dragging.
+> The pager leaves the mouse to Ghostty: select text and Cmd+click links as usual.
 
 ## Configuration
 
@@ -164,7 +179,7 @@ flowchart LR
     P --> R{Block}
     R -->|text| T[ANSI + OSC 8]
     R -->|mermaid| M[merman] --> S[resvg]
-    R -->|image| I[PNG]
+    R -->|image| I[PNG / JPEG / GIF / WebP / SVG]
     R -->|H1–H3| F[fontdue]
     R -->|math| X[latex-rust] --> S
     S --> K[kitty graphics<br/>Unicode placeholders]
@@ -193,7 +208,8 @@ of lines and never re-sends pixels.
 
 - **Ghostty only, by design.** Other terminals with kitty graphics may work, but they are
   not a goal.
-- Only **PNG** images for now; JPEG, GIF, WebP and SVG are on the roadmap.
+- Remote images are fetched before the document is shown, so a slow server delays the
+  start (up to the 10 s timeout).
 - Headings drawn as images can't be copied as text. They will switch back to text once
   Ghostty implements OSC 66.
 - Formulas are images too: they can't be copied as text.
@@ -207,7 +223,7 @@ cargo clippy
 cargo fmt
 ```
 
-See [ROADMAP.md](ROADMAP.md) for planned work, in Russian: more image formats, link navigation, table of contents, watch mode and more.
+See [ROADMAP.md](ROADMAP.md) for planned work, in Russian: link navigation, table of contents, watch mode and more.
 
 ## Acknowledgements
 

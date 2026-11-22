@@ -5,17 +5,19 @@
 //! Redraws are wrapped in synchronized output (DEC 2026) to avoid tearing.
 //!
 //! Views form a stack: the document, and on top of it optionally a single
-//! diagram opened full screen (click on it, or `z`). `+`/`-` re-render
-//! diagrams at another zoom; images wider than the screen are panned with
+//! diagram opened full screen (`z`). `+`/`-` re-render
+//! images and diagrams at another zoom; ones wider than the screen are panned with
 //! `h`/`l` by redrawing their placeholder rows from a later image column —
 //! the image itself is not re-sent.
 //!
-//! Mouse reporting (SGR, DEC 1000/1006) gives clicks and the wheel; it also
-//! captures plain drag selection — in Ghostty, Shift+drag still selects.
+//! The mouse is left to Ghostty, so selecting text and Cmd+clicking OSC 8
+//! links work as anywhere else. Alternate scroll mode (DEC 1007) makes
+//! Ghostty turn the wheel into arrow keys on the alternate screen.
 
 mod draw;
 mod input;
 mod keys;
+mod links;
 #[cfg(test)]
 mod tests;
 mod view;
@@ -23,20 +25,23 @@ mod view;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::os::fd::AsRawFd;
+use std::path::{Path, PathBuf};
 
 use crate::kitty;
 use crate::render::Document;
 use crate::term::{self, RawMode, Size};
 
 use keys::read_keys;
-use view::View;
+use view::{Kind, View};
 
-const ENTER: &str = "\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[?1000h\x1b[?1006h";
-const LEAVE: &str = "\x1b[?1006l\x1b[?1000l\x1b[?7h\x1b[?25h\x1b[?1049l";
+const ENTER: &str = "\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[?1007h";
+const LEAVE: &str = "\x1b[?1007l\x1b[?7h\x1b[?25h\x1b[?1049l";
 
-/// What to lay out: the whole document or one diagram full screen.
+/// What to lay out: the document, a Markdown file opened from a link, or
+/// one diagram full screen.
 pub enum Layout<'a> {
     Document,
+    File(&'a Path),
     Diagram(&'a str),
 }
 
@@ -48,8 +53,11 @@ enum Action {
     Relayout,
     /// Open this diagram source full screen.
     Open(String),
-    /// Leave the full-screen diagram.
+    /// Go back from a full-screen diagram or an opened file.
     Close,
+    /// Open a link target: `#anchor`, a Markdown file, or anything else
+    /// through the system.
+    Follow(String),
 }
 
 /// Runs the pager until the user quits. `render` lays out the document or a
@@ -108,7 +116,7 @@ impl<'a> Pager<'a> {
         Self {
             title,
             size,
-            views: vec![View::new(doc, None)],
+            views: vec![View::new(doc, Kind::Document)],
             query: None,
             prompt: None,
             message: None,
@@ -169,11 +177,58 @@ impl<'a> Pager<'a> {
             Action::Relayout => self.relayout(self.views.len() - 1, render)?,
             Action::Open(source) => {
                 let doc = render(Layout::Diagram(source), self.size, 1.0);
-                self.push(View::new(doc, Some(source.clone())))?;
+                self.push(View::new(doc, Kind::Diagram(source.clone())))?;
             }
             Action::Close => self.pop()?,
+            Action::Follow(url) => self.follow(url, render)?,
         }
         Ok(action)
+    }
+
+    fn follow(
+        &mut self,
+        url: &str,
+        render: &mut impl FnMut(Layout<'_>, Size, f32) -> Document,
+    ) -> io::Result<()> {
+        if let Some(anchor) = url.strip_prefix('#') {
+            self.jump_to(anchor);
+            return Ok(());
+        }
+        let Some(local) = url.strip_prefix("file://") else {
+            self.message = Some(links::open_external(url.as_ref()));
+            return Ok(());
+        };
+        let (path, fragment) = match local.split_once('#') {
+            Some((path, fragment)) => (path, Some(fragment)),
+            None => (local, None),
+        };
+        let path = PathBuf::from(path.replace("%20", " "));
+        if !links::is_markdown(&path) {
+            self.message = Some(links::open_external(path.as_os_str()));
+            return Ok(());
+        }
+        if !path.is_file() {
+            self.message = Some(format!("No such file: {}", path.display()));
+            return Ok(());
+        }
+        let doc = render(Layout::File(&path), self.size, 1.0);
+        self.push(View::new(doc, Kind::File(path)))?;
+        if let Some(anchor) = fragment {
+            self.jump_to(anchor);
+        }
+        Ok(())
+    }
+
+    /// Scrolls the heading with this anchor to the top.
+    fn jump_to(&mut self, anchor: &str) {
+        match self.view().anchor_line(anchor) {
+            Some(line) => {
+                let rows = self.view_rows();
+                self.view_mut().top = 0;
+                self.scroll(isize::try_from(line).unwrap_or(isize::MAX), rows);
+            }
+            None => self.message = Some(format!("No heading #{anchor}")),
+        }
     }
 
     /// Re-renders the view at `depth`, keeping its relative position.
@@ -184,9 +239,11 @@ impl<'a> Pager<'a> {
     ) -> io::Result<()> {
         let size = self.size;
         let view = &mut self.views[depth];
-        let layout = match &view.source {
-            Some(src) => Layout::Diagram(src),
-            None => Layout::Document,
+        let kind = view.kind.clone();
+        let layout = match &kind {
+            Kind::Document => Layout::Document,
+            Kind::File(path) => Layout::File(path),
+            Kind::Diagram(src) => Layout::Diagram(src),
         };
         let doc = render(layout, size, view.zoom);
         let mut out = free_images(&view.doc);
@@ -195,8 +252,8 @@ impl<'a> Pager<'a> {
 
         let rows = size.rows.saturating_sub(1).max(1);
         let anchor = view.top as f64 / view.total().max(1) as f64;
-        let (zoom, pan, source) = (view.zoom, view.pan, view.source.take());
-        *view = View::new(doc, source);
+        let (zoom, pan) = (view.zoom, view.pan);
+        *view = View::new(doc, kind);
         view.zoom = zoom;
         let max_top = view.total().saturating_sub(rows);
         view.top = ((anchor * view.total() as f64) as usize).min(max_top);

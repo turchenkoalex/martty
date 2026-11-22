@@ -6,11 +6,10 @@ use std::sync::OnceLock;
 
 use resvg::{tiny_skia, usvg};
 
-use crate::heading;
 use crate::kitty;
+use crate::picture::svg;
 use crate::term::Rgb;
 
-static FONT_REGULAR: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf");
 const FONT_SIZE: f32 = 14.0;
 /// Terminal cells are roughly this much taller than the font size.
 const CELL_TO_FONT: f32 = 1.25;
@@ -89,17 +88,13 @@ pub fn render(
     })
 }
 
-/// Loading system fonts is the slow part; do it once per process.
+/// Bundled JetBrains Mono, with system fonts as a fallback for glyphs it
+/// lacks.
 fn svg_options() -> &'static usvg::Options<'static> {
     static OPTIONS: OnceLock<usvg::Options<'static>> = OnceLock::new();
-    OPTIONS.get_or_init(|| {
-        let mut opt = usvg::Options::default();
-        // System fonts stay as a fallback for glyphs the bundled font lacks.
-        opt.fontdb_mut().load_system_fonts();
-        opt.fontdb_mut().load_font_data(FONT_REGULAR.to_vec());
-        opt.fontdb_mut()
-            .load_font_data(heading::FONT_BYTES.to_vec());
-        opt
+    OPTIONS.get_or_init(|| usvg::Options {
+        fontdb: svg::fonts(),
+        ..usvg::Options::default()
     })
 }
 

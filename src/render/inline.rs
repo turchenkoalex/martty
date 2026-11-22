@@ -74,8 +74,9 @@ impl Renderer<'_> {
             url: url.to_owned(),
             alt: start..start,
         });
+        let target = super::links::resolve(&self.cfg.base_dir, url);
         self.push_style(|s| {
-            s.link = Some(Rc::from(url));
+            s.link = Some(Rc::from(target));
             s.fg = Some(Color::Ansi(5));
             s.italic = true;
         });

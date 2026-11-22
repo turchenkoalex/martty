@@ -11,6 +11,14 @@ pub struct Document {
     pub image_ids: Vec<u32>,
     /// Image id → mermaid source, so the pager can open a diagram alone.
     pub diagrams: Vec<(u32, String)>,
+    pub headings: Vec<Heading>,
+}
+
+/// Where a heading starts, for `#anchor` links.
+pub struct Heading {
+    pub line: usize,
+    /// GitHub-style anchor, without the `#`.
+    pub anchor: String,
 }
 
 pub struct Line {

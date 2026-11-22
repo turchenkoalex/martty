@@ -3,12 +3,12 @@ use std::mem;
 use pulldown_cmark::HeadingLevel;
 use unicode_width::UnicodeWidthStr;
 
-use super::Renderer;
 #[cfg(feature = "highlight")]
 use super::highlight::highlight;
 use super::layout::Container;
 use super::span::{Span, spans_width};
 use super::wrap::{hard_wrap_spans, wrap};
+use super::{Heading, Renderer};
 use crate::style::{Color, Style, Underline};
 
 pub(super) struct CodeBlock {
@@ -33,6 +33,12 @@ impl Renderer<'_> {
         let level = self.heading.take().unwrap_or(HeadingLevel::H1);
         self.images.clear();
         let mut spans = mem::take(&mut self.inline);
+        let text: String = spans.iter().map(|s| s.text.as_str()).collect();
+        let anchor = self.anchors.next(&text);
+        self.headings.push(Heading {
+            line: self.line_no,
+            anchor,
+        });
         let (color, underline) = match level {
             HeadingLevel::H1 => (Color::Ansi(5), Underline::Double),
             HeadingLevel::H2 => (Color::Ansi(4), Underline::Single),

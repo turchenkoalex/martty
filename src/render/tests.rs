@@ -48,6 +48,7 @@ fn plain_config() -> Config {
         diagrams: None,
         math: None,
         first_image_id: 1,
+        base_dir: PathBuf::from("/nonexistent"),
     }
 }
 
@@ -86,6 +87,7 @@ fn render_should_keep_padded_inline_code_attached_to_punctuation() {
         diagrams: None,
         math: None,
         first_image_id: 1,
+        base_dir: PathBuf::from("/nonexistent"),
     };
     let out = strip_ansi(&render("a `b c`, d", &cfg));
     assert_eq!(out, "a \u{a0}b c\u{a0}, d\n");
@@ -100,12 +102,13 @@ fn images_config() -> Config {
         images: Some(Images {
             cell: (10, 20),
             max_rows: 10,
-            base_dir: PathBuf::from("/nonexistent"),
+            zoom: 1.0,
         }),
         headings: None,
         diagrams: None,
         math: None,
         first_image_id: 1,
+        base_dir: PathBuf::from("/nonexistent"),
     }
 }
 
@@ -122,18 +125,12 @@ fn render_should_show_png_via_kitty_graphics() {
     let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
     png.extend_from_slice(&[0, 0, 0, 20, 0, 0, 0, 40]);
     std::fs::write(dir.join("a.png"), &png).ok();
-    let mut cfg = images_config();
-    if let Some(images) = &mut cfg.images {
-        images.base_dir = dir;
-    }
+    let cfg = Config {
+        base_dir: dir,
+        ..images_config()
+    };
     let out = render("![a](a.png)", &cfg);
-    std::fs::remove_dir_all(
-        cfg.images
-            .as_ref()
-            .map(|i| i.base_dir.clone())
-            .unwrap_or_default(),
-    )
-    .ok();
+    std::fs::remove_dir_all(&cfg.base_dir).ok();
     assert!(out.contains("\x1b_Ga=T,U=1,i=1,f=100,t=d,q=2,c=2,r=2,"));
 }
 
