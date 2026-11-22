@@ -3,7 +3,6 @@ use std::mem;
 use pulldown_cmark::HeadingLevel;
 use unicode_width::UnicodeWidthStr;
 
-#[cfg(feature = "highlight")]
 use super::highlight::highlight;
 use super::layout::Container;
 use super::span::{Span, spans_width};
@@ -14,11 +13,6 @@ use crate::style::{Color, Style, Underline};
 pub(super) struct CodeBlock {
     pub(super) lang: String,
     pub(super) text: String,
-}
-
-#[cfg(not(feature = "highlight"))]
-fn highlight(_lang: &str, _text: &str) -> Option<Vec<Vec<Span>>> {
-    None
 }
 
 impl Renderer<'_> {

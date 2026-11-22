@@ -74,7 +74,6 @@ struct Svg {
     baseline: f32,
 }
 
-#[cfg(feature = "math")]
 fn to_svg(latex: &str, color: Rgb, display: bool) -> Option<Svg> {
     use std::sync::OnceLock;
 
@@ -108,11 +107,6 @@ fn to_svg(latex: &str, color: Rgb, display: bool) -> Option<Svg> {
     })
 }
 
-#[cfg(not(feature = "math"))]
-fn to_svg(_latex: &str, _color: Rgb, _display: bool) -> Option<Svg> {
-    None
-}
-
 /// Draws `svg` at `scale` pixels per point, shifted by `offset` pixels,
 /// into a transparent box of whole cells.
 fn rasterize(
@@ -140,7 +134,7 @@ fn rasterize(
     })
 }
 
-#[cfg(all(test, feature = "math"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 

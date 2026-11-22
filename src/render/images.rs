@@ -4,9 +4,11 @@ use std::path::{Path, PathBuf};
 use pulldown_cmark::HeadingLevel;
 
 use super::span::Span;
+use super::upload::{Job, Upload};
 use super::wrap::wrap;
 use super::{ImageRow, Renderer};
-use crate::kitty;
+use crate::cache;
+use crate::kitty::{self, Transmit};
 use crate::mermaid;
 use crate::picture::Picture;
 use crate::style::{Color, Style};
@@ -25,34 +27,32 @@ impl Renderer<'_> {
         let Some(ctx) = &cfg.images else {
             return false;
         };
-        let Some(picture) = load(&cfg.base_dir, url) else {
+        let Some((picture, source)) = load(&cfg.base_dir, url) else {
             return false;
         };
         let max_cols = u32::try_from(self.avail()).unwrap_or(u32::MAX);
         let px = picture.pixels(css_px(ctx.cell));
         let (cols, rows) = kitty::fit(px, ctx.cell, max_cols, ctx.max_rows, ctx.zoom);
         let target = (cols * ctx.cell.0, rows * ctx.cell.1);
-        let Some(encoded) = picture.encode(target) else {
-            return false;
-        };
-        self.place(cols, rows, 0, |out, id| encoded.write(out, id, cols, rows));
+        let key = cache::key(("image", source, target, cols, rows));
+        self.place(
+            cols,
+            rows,
+            0,
+            Box::new(move || cache::transmit(key, || picture.encode(target)?.transmit(cols, rows))),
+        );
         true
     }
 
-    /// Uploads an image (via `transmit`, into the preamble) and emits its
-    /// placeholder rows as regular lines, after any container prefixes and
-    /// `indent` cells of space.
-    pub(super) fn place(
-        &mut self,
-        cols: u32,
-        rows: u32,
-        indent: usize,
-        transmit: impl FnOnce(&mut String, u32),
-    ) -> u32 {
-        let id = self.upload(transmit);
+    /// Emits an image's placeholder rows as regular lines, after any
+    /// container prefixes and `indent` cells of space. `job` makes its
+    /// upload, once the pager is about to show it.
+    pub(super) fn place(&mut self, cols: u32, rows: u32, indent: usize, job: Job) -> u32 {
+        let id = self.next_image_id();
         let style = image_style(id);
         let avail = u32::try_from(self.avail().saturating_sub(indent)).unwrap_or(u32::MAX);
         let visible = cols.min(avail);
+        let first = self.line_no;
         for row in 0..rows.min(kitty::MAX_ROWS) {
             let start = self.out.len();
             self.write_prefix();
@@ -70,19 +70,30 @@ impl Renderer<'_> {
             };
             self.image_rows.push((self.line_no - 1, info));
         }
+        self.uploads.push(Upload {
+            id,
+            lines: first..self.line_no,
+            job,
+        });
         id
     }
 
-    /// Allocates the next image id and transmits the image into the preamble.
-    pub(super) fn upload(&mut self, transmit: impl FnOnce(&mut String, u32)) -> u32 {
+    /// Allocates the next image id and transmits the image into the
+    /// preamble, for images inside a line of text.
+    pub(super) fn upload(&mut self, transmit: &Transmit) -> u32 {
+        let id = self.next_image_id();
+        transmit.write(&mut self.preamble, id);
+        id
+    }
+
+    fn next_image_id(&mut self) -> u32 {
         let n = u32::try_from(self.image_ids.len()).unwrap_or(0);
         let id = (self.cfg.first_image_id.wrapping_add(n) & 0x00FF_FFFF).max(1);
         self.image_ids.push(id);
-        transmit(&mut self.preamble, id);
         id
     }
 
-    /// Renders a mermaid block as an image. On a parse error prints it and
+    /// Lays a mermaid block out as an image. On a parse error prints it and
     /// returns `false`, so the source is shown as a regular code block.
     pub(super) fn diagram(&mut self, source: &str) -> bool {
         let cfg = self.cfg;
@@ -90,13 +101,22 @@ impl Renderer<'_> {
             return false;
         };
         let view = (u32::try_from(self.avail()).unwrap_or(u32::MAX), d.max_rows);
-        match mermaid::render(source, &d.palette, d.cell, view, d.zoom, d.max_upscale) {
-            Ok(r) => {
-                let spare = usize::try_from(view.0.saturating_sub(r.cols)).unwrap_or(0);
+        match mermaid::layout(source, &d.palette, d.cell, view, d.zoom, d.max_upscale) {
+            Ok(diagram) => {
+                let spare = usize::try_from(view.0.saturating_sub(diagram.cols)).unwrap_or(0);
                 let indent = if d.center { spare / 2 } else { 0 };
-                let id = self.place(r.cols, r.rows, indent, |out, id| {
-                    kitty::write_rgba(out, id, &r.rgba, (r.width, r.height), r.cols, r.rows);
-                });
+                let key = cache::key((
+                    "diagram",
+                    source,
+                    &d.palette,
+                    d.cell,
+                    view,
+                    d.zoom.to_bits(),
+                    d.max_upscale.to_bits(),
+                ));
+                let (cols, rows) = (diagram.cols, diagram.rows);
+                let job = Box::new(move || cache::transmit(key, || diagram.transmit()));
+                let id = self.place(cols, rows, indent, job);
                 self.diagrams.push((id, source.to_owned()));
                 true
             }
@@ -129,20 +149,27 @@ impl Renderer<'_> {
 
         let avail = self.avail();
         let per_line = ((avail as f32 / scale).floor() as usize).max(1);
-        let mut bitmaps = Vec::new();
+        let mut lines = Vec::new();
         for line in wrap(spans, per_line) {
             let line: String = line.iter().map(|s| s.text.as_str()).collect();
-            match h.font.render(line.trim_end(), h.cell, scale, ROWS, color) {
-                Some(bitmap) => bitmaps.push(bitmap),
+            let line = line.trim_end().to_owned();
+            match h.font.cols(&line, h.cell, scale) {
+                Some(cols) => lines.push((line, cols)),
                 None => return false,
             }
         }
         let max_cols = u32::try_from(avail).unwrap_or(u32::MAX);
-        for b in bitmaps {
-            let cols = b.cols.min(max_cols);
-            self.place(cols, ROWS, 0, |out, id| {
-                kitty::write_rgba(out, id, &b.rgba, (b.width, b.height), cols, ROWS);
+        let (font, cell) = (h.font, h.cell);
+        for (line, natural) in lines {
+            let cols = natural.min(max_cols);
+            let key = cache::key(("heading", &line, cell, scale.to_bits(), color, cols));
+            let job = Box::new(move || {
+                cache::transmit(key, || {
+                    let b = font.render(&line, cell, scale, ROWS, color)?;
+                    Some(Transmit::rgba(&b.rgba, (b.width, b.height), cols, ROWS))
+                })
             });
+            self.place(cols, ROWS, 0, job);
         }
         true
     }
@@ -161,14 +188,18 @@ fn css_px(cell: (u32, u32)) -> f32 {
 }
 
 /// Reads and recognizes the image at `url`: a local path or an http(s) URL.
-fn load(base: &Path, url: &str) -> Option<Picture> {
+/// Also returns what tells this image from others for the cache: the URL,
+/// or for a file its path, size and modification time.
+fn load(base: &Path, url: &str) -> Option<(Picture, u64)> {
     if crate::remote::is_remote(url) {
         let data = crate::remote::fetch(url)?;
         let name = url.split(['?', '#']).next().unwrap_or(url);
-        return Picture::new_remote(data, Path::new(name));
+        return Some((Picture::new_remote(data, Path::new(name))?, cache::key(url)));
     }
     let path = resolve(base, url)?;
-    Picture::new(std::fs::read(&path).ok()?, &path)
+    let meta = std::fs::metadata(&path).ok()?;
+    let source = cache::key((&path, meta.len(), meta.modified().ok()));
+    Some((Picture::new(std::fs::read(&path).ok()?, &path)?, source))
 }
 
 /// Local path for an image URL; remote URLs give `None`.

@@ -8,6 +8,7 @@ use unicode_width::UnicodeWidthStr;
 fn text_doc(lines: &[&str]) -> Document {
     Document {
         preamble: String::new(),
+        uploads: Vec::new(),
         lines: lines.iter().map(|t| Line::new(*t)).collect(),
         image_ids: Vec::new(),
         diagrams: Vec::new(),

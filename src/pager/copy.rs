@@ -90,6 +90,7 @@ mod tests {
         quote.prefix_len = "\x1b[90m▎ ".len();
         let doc = Document {
             preamble: String::new(),
+            uploads: Vec::new(),
             lines: vec![
                 quote,
                 Line::new("  fn main() {}  "),

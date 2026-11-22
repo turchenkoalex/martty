@@ -4,7 +4,7 @@ use super::*;
 
 /// Shadows the glob-imported `render` so assertions see plain output.
 fn render(md: &str, cfg: &Config) -> String {
-    super::render(md, cfg).to_ansi()
+    super::render(md, cfg).into_ansi()
 }
 
 fn strip_ansi(s: &str) -> String {
@@ -134,7 +134,33 @@ fn render_should_show_png_via_kitty_graphics() {
     };
     let out = render("![a](a.png)", &cfg);
     std::fs::remove_dir_all(&cfg.base_dir).ok();
-    assert!(out.contains("\x1b_Ga=T,U=1,i=1,f=100,t=d,q=2,c=2,r=2,"));
+    assert!(out.contains("\x1b_Gi=1,a=T,U=1,f=100,t=d,q=2,c=2,r=2,"));
+}
+
+#[test]
+fn take_uploads_should_send_only_images_on_given_lines_once() {
+    let dir = std::env::temp_dir().join(format!("martty-lazy-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+    png.extend_from_slice(&[0, 0, 0, 20, 0, 0, 0, 40]);
+    std::fs::write(dir.join("a.png"), &png).ok();
+    let cfg = Config {
+        base_dir: dir,
+        ..images_config()
+    };
+    let filler = "text\n\n".repeat(30);
+    let mut doc = super::render(&format!("![a](a.png)\n\n{filler}![b](a.png)"), &cfg);
+    std::fs::remove_dir_all(&cfg.base_dir).ok();
+    assert!(doc.preamble.is_empty());
+    let first = doc.take_uploads(0..10);
+    let again = doc.take_uploads(0..10);
+    let rest = doc.take_uploads(0..usize::MAX);
+    assert!(
+        first.contains("i=1,") && !first.contains("i=2,"),
+        "{first:?}"
+    );
+    assert_eq!(again, "");
+    assert!(rest.contains("i=2,") && !rest.contains("i=1,"), "{rest:?}");
 }
 
 fn heading_config() -> Config {
@@ -151,7 +177,7 @@ fn heading_config() -> Config {
 #[test]
 fn render_should_draw_h1_as_compressed_rgba_image() {
     let out = render("# Hello", &heading_config());
-    assert!(out.contains("\x1b_Ga=T,U=1,i=1,f=32,o=z,"));
+    assert!(out.contains("\x1b_Gi=1,a=T,U=1,f=32,o=z,"));
 }
 
 #[test]
@@ -170,7 +196,7 @@ fn render_should_keep_text_heading_when_glyphs_missing() {
 #[test]
 fn render_should_draw_h3_as_image() {
     let out = render("### Three", &heading_config());
-    assert!(out.contains("\x1b_Ga=T,U=1,"));
+    assert!(out.contains(",a=T,U=1,"));
 }
 
 #[test]
@@ -261,7 +287,6 @@ fn render_should_highlight_marked_text_only_in_pairs() {
     assert!(out.contains("a \x1b[38;5;0;48;5;3mb\x1b[0m c"), "{out:?}");
 }
 
-#[cfg(feature = "mermaid")]
 fn diagram_indent(center: bool) -> Option<usize> {
     let cfg = Config {
         width: 200,
@@ -288,7 +313,6 @@ fn diagram_indent(center: bool) -> Option<usize> {
     Some(row.prefix_len)
 }
 
-#[cfg(feature = "mermaid")]
 #[test]
 fn render_should_center_small_diagrams_when_asked() {
     let centered = diagram_indent(true).unwrap_or_default();
@@ -327,7 +351,6 @@ fn render_should_only_start_definitions_at_colon_and_space() {
     );
 }
 
-#[cfg(feature = "math")]
 fn math_config() -> Config {
     Config {
         math: Some(MathImages {
@@ -338,7 +361,6 @@ fn math_config() -> Config {
     }
 }
 
-#[cfg(feature = "math")]
 #[test]
 fn render_should_place_inline_formula_within_its_line() {
     let doc = super::render("a $x^2$ b", &math_config());
@@ -349,7 +371,6 @@ fn render_should_place_inline_formula_within_its_line() {
     assert!(line.ends_with(" b"), "{line:?}");
 }
 
-#[cfg(feature = "math")]
 #[test]
 fn render_should_put_display_formula_on_its_own_rows() {
     let doc = super::render("before\n$$\\frac{a}{b}$$\nafter", &math_config());
@@ -360,12 +381,11 @@ fn render_should_put_display_formula_on_its_own_rows() {
     assert!(rows >= 2, "{plain:?}");
 }
 
-#[cfg(feature = "math")]
 #[test]
 fn render_should_show_unknown_formula_as_code() {
     let doc = super::render("$\\notacommand$", &math_config());
     assert!(doc.image_ids.is_empty());
-    assert_eq!(strip_ansi(&doc.to_ansi()), "\\notacommand\n");
+    assert_eq!(strip_ansi(&doc.into_ansi()), "\\notacommand\n");
 }
 
 #[test]

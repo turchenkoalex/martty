@@ -7,7 +7,7 @@ mod decode;
 mod scale;
 pub mod svg;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::kitty;
 
@@ -29,7 +29,15 @@ pub struct Picture {
     format: Format,
     /// Natural size: pixels for bitmaps, CSS pixels for SVG.
     size: (u32, u32),
-    svg: Option<resvg::usvg::Tree>,
+    svg: Option<svg::Image>,
+}
+
+/// What an SVG's `<image href>` may load besides `data:` URLs.
+enum Refs {
+    /// Local files; relative paths resolve against the directory.
+    Local(Option<PathBuf>),
+    /// Nothing: the SVG came from the network and must not read local files.
+    DataOnly,
 }
 
 /// Straight (non-premultiplied) RGBA frames of one size.
@@ -49,29 +57,32 @@ impl Picture {
     /// Recognizes the format by content (SVG also by extension) and reads
     /// the size. `path` is where the file came from, for SVG references.
     pub fn new(data: Vec<u8>, path: &Path) -> Option<Self> {
-        Self::with_refs(data, path, svg::Refs::Local(path.parent()))
+        Self::with_refs(
+            data,
+            path,
+            Refs::Local(path.parent().map(Path::to_path_buf)),
+        )
     }
 
     /// An image downloaded from `name` (the URL's path): an SVG may embed
     /// only `data:` images, never local files.
     pub fn new_remote(data: Vec<u8>, name: &Path) -> Option<Self> {
-        Self::with_refs(data, name, svg::Refs::DataOnly)
+        Self::with_refs(data, name, Refs::DataOnly)
     }
 
-    fn with_refs(data: Vec<u8>, path: &Path, refs: svg::Refs<'_>) -> Option<Self> {
+    fn with_refs(data: Vec<u8>, path: &Path, refs: Refs) -> Option<Self> {
         if data.len() > MAX_BYTES {
             return None;
         }
         let format = sniff(&data, path)?;
-        let (size, svg) = match format {
-            Format::Png => (kitty::png_size(&data)?, None),
-            Format::Svg => {
-                let tree = svg::parse(&data, refs)?;
-                let size = tree.size();
-                let px = (size.width().ceil() as u32, size.height().ceil() as u32);
-                (px, Some(tree))
-            }
-            _ => (decode::size(format, &data)?, None),
+        let svg = match format {
+            Format::Svg => Some(svg::Image::new(&data, refs)?),
+            _ => None,
+        };
+        let size = match format {
+            Format::Png => kitty::png_size(&data)?,
+            Format::Svg => svg.as_ref()?.size(),
+            _ => decode::size(format, &data)?,
         };
         (size.0 > 0 && size.1 > 0).then_some(Self {
             data,
@@ -97,8 +108,8 @@ impl Picture {
         match self.format {
             Format::Png => Some(Encoded::Png(&self.data)),
             Format::Svg => {
-                let tree = self.svg.as_ref()?;
-                Some(Encoded::Frames(svg::rasterize(tree, px)?))
+                let image = self.svg.as_ref()?;
+                Some(Encoded::Frames(image.rasterize(&self.data, px)?))
             }
             format => {
                 let frames = decode::frames(format, &self.data, px)?;
@@ -114,24 +125,22 @@ pub enum Encoded<'a> {
 }
 
 impl Encoded<'_> {
-    /// Transmits image `id` with a virtual placement of `cols` × `rows`
+    /// The upload of the picture with a virtual placement of `cols` × `rows`
     /// cells; more than one frame also starts the animation.
-    pub fn write(&self, out: &mut String, id: u32, cols: u32, rows: u32) {
+    pub fn transmit(&self, cols: u32, rows: u32) -> Option<kitty::Transmit> {
         let f = match self {
-            Encoded::Png(data) => return kitty::write_png(out, id, data, cols, rows),
+            Encoded::Png(data) => return Some(kitty::Transmit::png(data, cols, rows)),
             Encoded::Frames(f) => f,
         };
-        let Some((first, rest)) = f.frames.split_first() else {
-            return;
-        };
-        kitty::write_rgba(out, id, &first.rgba, f.size, cols, rows);
-        if rest.is_empty() {
-            return;
+        let (first, rest) = f.frames.split_first()?;
+        let mut t = kitty::Transmit::rgba(&first.rgba, f.size, cols, rows);
+        if !rest.is_empty() {
+            for frame in rest {
+                t.frame(&frame.rgba, f.size, frame.delay_ms);
+            }
+            t.start_animation(first.delay_ms, f.plays);
         }
-        for frame in rest {
-            kitty::write_frame(out, id, &frame.rgba, f.size, frame.delay_ms);
-        }
-        kitty::write_animation_start(out, id, first.delay_ms, f.plays);
+        Some(t)
     }
 }
 
@@ -218,12 +227,12 @@ mod tests {
     fn animation_should_be_sent_as_frames_and_started() {
         let (picture, _) = asset("demo-animated.gif");
         let mut out = String::new();
-        if let Some(encoded) = picture.encode((40, 40)) {
-            encoded.write(&mut out, 7, 4, 2);
+        if let Some(t) = picture.encode((40, 40)).and_then(|e| e.transmit(4, 2)) {
+            t.write(&mut out, 7);
         }
-        assert!(out.contains("\x1b_Ga=T,U=1,i=7,f=32"));
-        assert!(out.contains("\x1b_Ga=f,i=7,"));
-        assert!(out.contains("\x1b_Ga=a,i=7,s=3,"));
+        assert!(out.contains("\x1b_Gi=7,a=T,U=1,f=32"));
+        assert!(out.contains("\x1b_Gi=7,a=f,"));
+        assert!(out.contains("\x1b_Gi=7,a=a,s=3,"));
     }
 
     #[test]

@@ -207,6 +207,7 @@ mod tests {
     fn doc(total: usize, headings: &[(usize, &str)]) -> View {
         let doc = Document {
             preamble: String::new(),
+            uploads: Vec::new(),
             lines: (0..total).map(|_| Line::new("x")).collect(),
             image_ids: Vec::new(),
             diagrams: Vec::new(),

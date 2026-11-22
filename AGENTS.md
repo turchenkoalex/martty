@@ -41,19 +41,22 @@ src/
 │   ├── table.rs   # tables: column widths, wrapping inside cells
 │   ├── formulas.rs # inline and display math placed as images
 │   ├── links.rs   # link targets (relative → file://), heading anchors
-│   ├── highlight.rs # syntect scopes → palette colors (feature `highlight`)
+│   ├── highlight.rs # syntect scopes → palette colors
 │   ├── images.rs  # images, diagrams and image headings placed via kitty
+│   ├── upload.rs  # uploads deferred until their lines are near the screen, run in parallel
+│   ├── scan.rs    # passes over all events before layout: prefetching, list lengths
 │   ├── span.rs    # styled text spans and their SGR/OSC 8 output
 │   ├── slice.rs   # cutting a column range out of an ANSI line, for panning
 │   └── wrap.rs    # word wrapping by display width
 ├── style.rs       # SGR colors and attributes
 ├── term.rs        # capability probe (one round-trip), raw mode, window size
 ├── kitty.rs       # kitty graphics transmission and Unicode placeholders
+├── cache.rs       # session cache of encoded uploads, keyed by what their pixels depend on
 ├── diacritics.rs  # generated row/column diacritics table, don't edit by hand
-├── picture/       # image formats: sniffing, JPEG/GIF/WebP decoding, SVG, downscaling
+├── picture/       # image formats: sniffing, JPEG/GIF/WebP decoding, SVG, downscaling, bundled fonts
 ├── remote.rs      # https images, opt-in per run, fenced in; disk cache
-├── mermaid.rs     # merman → SVG → resvg → kitty (feature `mermaid`)
-├── math.rs        # LaTeX → latex-rust SVG → resvg → kitty (feature `math`)
+├── mermaid.rs     # merman → SVG → resvg → kitty
+├── math.rs        # LaTeX → latex-rust SVG → resvg → kitty
 ├── heading.rs     # H1–H3 rasterized with fontdue in Ghostty's font or bundled JetBrains Mono
 ├── progress.rs    # Ghostty's progress indicator (OSC 9;4) during slow layouts
 └── pager/         # alternate-screen pager
@@ -73,6 +76,12 @@ src/
   rendered line is plain text. The pager scrolls, clips and pans by redrawing lines and
   never re-sends pixels. Keep this invariant: anything drawn as an image must still be a
   sequence of text lines.
+- Layout only sizes an image placed on its own rows (`Renderer::place`): drawing,
+  compressing and base64 go into a job in `Document::uploads`, which the pager runs when the
+  lines come within a screen of the view (`Document::take_uploads`) and printing runs all
+  at once. Jobs run on other threads, so what they capture must be `Send`; wrap the work in
+  `cache::transmit` with a key of everything the pixels depend on. Only inline formulas go
+  straight into `Document::preamble`.
 - Terminal capabilities come from the single probe in `term.rs`. Add new queries to that
   round-trip, before the DA1 sentinel, instead of a separate one. `MARTTY_IMAGES` and
   `MARTTY_TEXT_SIZING` override detection.
@@ -84,8 +93,10 @@ src/
 
 ## Dependencies
 
-Every new crate must give something we can't write in an evening. Keep default features
-off and enable only what is used; put heavy optional functionality behind a cargo feature.
+Every new crate must give something we can't write in an evening. Keep a crate's default
+features off and enable only what is used. martty has no cargo features of its own: every
+build does everything, and binary size is not a goal. What a terminal can't show falls back
+to text at run time, not at build time.
 
 ## Code style
 

@@ -67,8 +67,7 @@ of asterisks.
 ### Prebuilt binaries (macOS)
 
 Each [release](https://github.com/turchenkoalex/martty/releases/latest) has binaries for
-Apple silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`), built with the
-default features:
+Apple silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`):
 
 ```sh
 mkdir -p ~/.local/bin
@@ -83,7 +82,8 @@ it; clear the flag with `xattr -d com.apple.quarantine martty`. Each archive has
 
 ### From source
 
-You need a recent stable Rust toolchain with edition 2024 support (Rust 1.100+).
+You need a recent stable Rust toolchain with edition 2024 support (Rust 1.100+) and a C
+compiler (syntax highlighting builds the Oniguruma library).
 
 ```sh
 git clone https://github.com/turchenkoalex/martty.git
@@ -96,21 +96,6 @@ Or build without installing:
 ```sh
 cargo build --release
 ./target/release/martty demo.md
-```
-
-Three optional features are on by default:
-
-| Feature | Adds | Without it |
-|---|---|---|
-| `mermaid` | Mermaid diagrams via merman, about 10 MB | ` ```mermaid ` blocks show as code |
-| `math` | LaTeX formulas via latex-rust with the STIX Two Math font, about 2.5 MB | Formulas show as code |
-| `highlight` | Syntax highlighting via syntect, about 1 MB; builds the Oniguruma C library, so it needs a C compiler | Code blocks in one color |
-
-To leave them all out, or pick some back:
-
-```sh
-cargo install --path . --no-default-features
-cargo install --path . --no-default-features --features highlight
 ```
 
 ## Usage
@@ -251,11 +236,18 @@ Images are sent once and then placed as Unicode placeholder characters, so every
 line is plain text. That keeps scrolling and panning in the pager cheap: it redraws a window
 of lines and never re-sends pixels.
 
+Laying a document out only measures its images, diagrams and image headings. The pager
+draws and sends them when they come within a screen of the visible part, several at once
+on all CPU cores, so a long document with dozens of diagrams opens as fast as a short one.
+What was drawn is kept for the session: zooming, resizing the window or saving a followed
+file draws again only what changed.
+
 | Module | Responsibility |
 |---|---|
 | `render/` | Markdown → lines of styled text |
 | `term.rs` | Capability probing, raw mode, terminal size |
 | `kitty.rs`, `diacritics.rs` | kitty graphics transmission and Unicode placeholders |
+| `cache.rs` | Images, diagrams and headings drawn this session |
 | `mermaid.rs` | Diagram rendering with theme colors |
 | `math.rs` | LaTeX formulas rasterized at the terminal's text size |
 | `heading.rs` | Large headings rasterized with fontdue |
@@ -299,4 +291,4 @@ cargo fmt
 
 martty is licensed under the [Apache License 2.0](LICENSE). The bundled JetBrains Mono font
 is licensed separately under the [SIL Open Font License 1.1](assets/fonts/OFL.txt), as is
-STIX Two Math, which latex-rust embeds with the `math` feature.
+STIX Two Math, which latex-rust embeds.

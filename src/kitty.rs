@@ -57,58 +57,86 @@ pub fn fit(
     (cols as u32, rows as u32)
 }
 
-/// Transmits a PNG as image `id` with a virtual placement of `cols` × `rows`
-/// cells. Replies are suppressed (`q=2`) so nothing leaks into the shell.
-pub fn write_png(out: &mut String, id: u32, png: &[u8], cols: u32, rows: u32) {
-    let keys = format!("a=T,U=1,i={id},f=100,t=d,q=2,c={cols},r={rows}");
-    write_chunked(out, &keys, png);
+/// Kitty commands that upload one image, kept without the image id, so the
+/// same pixels can be sent again under another id (ids are fresh on every
+/// layout). Payloads are base64 already: encoding is the slow part.
+#[derive(Debug, Default)]
+pub struct Transmit {
+    /// Keys of each command (without `i=`) and its base64 payload.
+    commands: Vec<(String, String)>,
 }
 
-/// Like [`write_png`] for raw straight-alpha RGBA, zlib-compressed on the
-/// wire (`o=z`): heading bitmaps are mostly transparent and shrink ~20×.
-pub fn write_rgba(out: &mut String, id: u32, rgba: &[u8], size: (u32, u32), cols: u32, rows: u32) {
-    let (w, h) = size;
-    let packed = miniz_oxide::deflate::compress_to_vec_zlib(rgba, 6);
-    let keys = format!("a=T,U=1,i={id},f=32,o=z,s={w},v={h},t=d,q=2,c={cols},r={rows}");
-    write_chunked(out, &keys, &packed);
-}
-
-/// Adds a frame to animation `id` (kitty `a=f`): straight RGBA covering the
-/// whole image, shown for `gap_ms`.
-pub fn write_frame(out: &mut String, id: u32, rgba: &[u8], size: (u32, u32), gap_ms: u32) {
-    let (w, h) = size;
-    let packed = miniz_oxide::deflate::compress_to_vec_zlib(rgba, 6);
-    let keys = format!("a=f,i={id},f=32,o=z,s={w},v={h},z={gap_ms},q=2");
-    write_chunked(out, &keys, &packed);
-}
-
-/// Starts animation `id` (kitty `a=a`): sets the first frame's gap and runs
-/// it `plays` times, or forever when `None`.
-pub fn write_animation_start(out: &mut String, id: u32, first_gap_ms: u32, plays: Option<u32>) {
-    // `v` is the loop count plus one; 1 loops forever.
-    let loops = plays.map_or(1, |n| n.saturating_add(1));
-    let _ = write!(
-        out,
-        "\x1b_Ga=a,i={id},r=1,z={first_gap_ms},q=2\x1b\\\x1b_Ga=a,i={id},s=3,v={loops},q=2\x1b\\"
-    );
-}
-
-fn write_chunked(out: &mut String, keys: &str, data: &[u8]) {
-    let payload = base64(data);
-    let mut chunks = payload.as_bytes().chunks(CHUNK).peekable();
-    let mut first = true;
-    while let Some(chunk) = chunks.next() {
-        let more = u8::from(chunks.peek().is_some());
-        out.push_str("\x1b_G");
-        if first {
-            let _ = write!(out, "{keys},");
-            first = false;
+impl Transmit {
+    /// A PNG with a virtual placement of `cols` × `rows` cells. Replies are
+    /// suppressed (`q=2`) so nothing leaks into the shell.
+    pub fn png(png: &[u8], cols: u32, rows: u32) -> Self {
+        let keys = format!("a=T,U=1,f=100,t=d,q=2,c={cols},r={rows}");
+        Self {
+            commands: vec![(keys, base64(png))],
         }
-        let _ = write!(out, "m={more};");
-        // base64 is pure ASCII.
-        out.extend(chunk.iter().map(|&b| char::from(b)));
-        out.push_str("\x1b\\");
     }
+
+    /// Like [`Transmit::png`] for raw straight-alpha RGBA, zlib-compressed on
+    /// the wire (`o=z`): heading bitmaps are mostly transparent and shrink ~20×.
+    pub fn rgba(rgba: &[u8], size: (u32, u32), cols: u32, rows: u32) -> Self {
+        let (w, h) = size;
+        let keys = format!("a=T,U=1,f=32,o=z,s={w},v={h},t=d,q=2,c={cols},r={rows}");
+        Self {
+            commands: vec![(keys, compressed(rgba))],
+        }
+    }
+
+    /// Adds an animation frame (kitty `a=f`): straight RGBA covering the
+    /// whole image, shown for `gap_ms`.
+    pub fn frame(&mut self, rgba: &[u8], size: (u32, u32), gap_ms: u32) {
+        let (w, h) = size;
+        let keys = format!("a=f,f=32,o=z,s={w},v={h},z={gap_ms},q=2");
+        self.commands.push((keys, compressed(rgba)));
+    }
+
+    /// Starts the animation (kitty `a=a`): sets the first frame's gap and
+    /// runs it `plays` times, or forever when `None`.
+    pub fn start_animation(&mut self, first_gap_ms: u32, plays: Option<u32>) {
+        // `v` is the loop count plus one; 1 loops forever.
+        let loops = plays.map_or(1, |n| n.saturating_add(1));
+        self.commands
+            .push((format!("a=a,r=1,z={first_gap_ms},q=2"), String::new()));
+        self.commands
+            .push((format!("a=a,s=3,v={loops},q=2"), String::new()));
+    }
+
+    /// Bytes this takes on the wire, roughly.
+    pub fn len(&self) -> usize {
+        self.commands.iter().map(|(k, p)| k.len() + p.len()).sum()
+    }
+
+    /// Writes the commands for image `id`, the payload in chunks.
+    pub fn write(&self, out: &mut String, id: u32) {
+        for (keys, payload) in &self.commands {
+            if payload.is_empty() {
+                let _ = write!(out, "\x1b_Gi={id},{keys}\x1b\\");
+                continue;
+            }
+            let mut chunks = payload.as_bytes().chunks(CHUNK).peekable();
+            let mut first = true;
+            while let Some(chunk) = chunks.next() {
+                let more = u8::from(chunks.peek().is_some());
+                out.push_str("\x1b_G");
+                if first {
+                    let _ = write!(out, "i={id},{keys},");
+                    first = false;
+                }
+                let _ = write!(out, "m={more};");
+                // base64 is pure ASCII.
+                out.extend(chunk.iter().map(|&b| char::from(b)));
+                out.push_str("\x1b\\");
+            }
+        }
+    }
+}
+
+fn compressed(rgba: &[u8]) -> String {
+    base64(&miniz_oxide::deflate::compress_to_vec_zlib(rgba, 6))
 }
 
 /// Frees image `id` and its data in the terminal.
@@ -234,9 +262,19 @@ mod tests {
     }
 
     #[test]
-    fn write_png_should_split_payload_into_chunks() {
+    fn png_should_split_payload_into_chunks() {
         let mut out = String::new();
-        write_png(&mut out, 7, &vec![0u8; 4000], 4, 2);
+        Transmit::png(&vec![0u8; 4000], 4, 2).write(&mut out, 7);
         assert_eq!(out.matches("\x1b_G").count(), 2);
+        assert!(out.starts_with("\x1b_Gi=7,a=T,U=1,f=100,"));
+    }
+
+    #[test]
+    fn transmit_should_take_any_id() {
+        let t = Transmit::rgba(&[0; 16], (2, 2), 1, 1);
+        let (mut a, mut b) = (String::new(), String::new());
+        t.write(&mut a, 7);
+        t.write(&mut b, 8);
+        assert_eq!(a.replace("i=7,", "i=8,"), b);
     }
 }

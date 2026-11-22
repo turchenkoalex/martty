@@ -2,13 +2,19 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use super::slice::slice_cells;
+use super::upload::{self, Upload};
 use crate::kitty;
 use crate::style::{Color, Style};
 
 /// Rendered output: escape sequences that must reach the terminal first
 /// (image uploads), then the visible lines.
+#[derive(Default)]
 pub struct Document {
+    /// Uploads sent before anything is drawn (inline formulas).
     pub preamble: String,
+    /// Uploads made only when their lines are about to be seen: see
+    /// [`Document::take_uploads`].
+    pub uploads: Vec<Upload>,
     pub lines: Vec<Line>,
     pub image_ids: Vec<u32>,
     /// Image id → mermaid source, so the pager can open a diagram alone.
@@ -133,13 +139,31 @@ impl Line {
 
 impl Document {
     /// Everything as one string, for printing without a pager.
-    pub fn to_ansi(&self) -> String {
-        let mut out = self.preamble.clone();
+    pub fn into_ansi(mut self) -> String {
+        let mut out = std::mem::take(&mut self.preamble);
+        out.push_str(&self.take_uploads(0..usize::MAX));
         for line in &self.lines {
             out.push_str(&line.text);
             out.push('\n');
         }
         out
+    }
+
+    /// Uploads, not sent before, of the images shown on any of `lines`,
+    /// made in parallel. Each image is uploaded at most once.
+    pub fn take_uploads(&mut self, lines: Range<usize>) -> String {
+        let (now, later) = std::mem::take(&mut self.uploads)
+            .into_iter()
+            .partition(|u| u.lines.start < lines.end && lines.start < u.lines.end);
+        self.uploads = later;
+        upload::run(now.into_iter().map(|u| (u.id, u.job)).collect())
+    }
+
+    /// Whether some image is still to be uploaded for `lines`.
+    pub fn has_uploads(&self, lines: Range<usize>) -> bool {
+        self.uploads
+            .iter()
+            .any(|u| u.lines.start < lines.end && lines.start < u.lines.end)
     }
 
     /// Widest horizontal pan any line allows.

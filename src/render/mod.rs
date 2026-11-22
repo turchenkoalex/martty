@@ -7,18 +7,19 @@ mod deflist;
 mod document;
 mod emoji;
 mod formulas;
-#[cfg(feature = "highlight")]
 mod highlight;
 mod html;
 mod images;
 mod inline;
 mod layout;
 mod links;
+mod scan;
 mod slice;
 mod span;
 mod table;
 #[cfg(test)]
 mod tests;
+mod upload;
 mod wrap;
 
 use std::collections::VecDeque;
@@ -41,6 +42,7 @@ use html::OpenTag;
 use images::PendingImage;
 use inline::link_style;
 use layout::Container;
+pub use scan::warm_up;
 use span::{Pen, Span};
 use table::Table;
 
@@ -132,58 +134,17 @@ pub fn render(markdown: &str, config: &Config) -> Document {
     let events: Vec<Event<'_>> =
         TextMergeStream::new(Parser::new_ext(&markdown, options)).collect();
     if config.images.is_some() {
-        crate::remote::prefetch(&image_urls(&events));
+        crate::remote::prefetch(&scan::image_urls(&events));
+    }
+    if let Some(d) = &config.diagrams {
+        crate::mermaid::prefetch(&scan::mermaid_sources(&events), &d.palette);
     }
     let mut renderer = Renderer::new(config);
-    renderer.list_lengths = ordered_list_lengths(&events);
+    renderer.list_lengths = scan::ordered_list_lengths(&events);
     for event in events {
         renderer.event(event);
     }
     renderer.finish()
-}
-
-/// Every image a document references, from Markdown and from `<img>` tags.
-fn image_urls<'a>(events: &'a [Event<'_>]) -> Vec<&'a str> {
-    let mut urls = Vec::new();
-    for event in events {
-        match event {
-            Event::Start(Tag::Image { dest_url, .. }) => urls.push(dest_url.as_ref()),
-            Event::Html(html) | Event::InlineHtml(html) => urls.extend(html::img_sources(html)),
-            _ => {}
-        }
-    }
-    urls
-}
-
-/// Item count of every ordered list, in the order the lists start, so
-/// markers can be padded to the widest number before it is reached.
-fn ordered_list_lengths(events: &[Event<'_>]) -> VecDeque<u64> {
-    let mut lengths = VecDeque::new();
-    let mut open: Vec<Option<usize>> = Vec::new();
-    for event in events {
-        match event {
-            Event::Start(Tag::List(Some(_))) => {
-                open.push(Some(lengths.len()));
-                lengths.push_back(0);
-            }
-            Event::Start(Tag::List(None)) => open.push(None),
-            Event::End(TagEnd::List(_)) => {
-                open.pop();
-            }
-            Event::Start(Tag::Item) => {
-                if let Some(n) = open
-                    .last()
-                    .copied()
-                    .flatten()
-                    .and_then(|i| lengths.get_mut(i))
-                {
-                    *n += 1;
-                }
-            }
-            _ => {}
-        }
-    }
-    lengths
 }
 
 struct Renderer<'c> {
@@ -192,6 +153,7 @@ struct Renderer<'c> {
     /// Style state of the line being written to `out`.
     pen: Pen,
     preamble: String,
+    uploads: Vec<upload::Upload>,
     image_ids: Vec<u32>,
     /// Lines written to `out` so far.
     line_no: usize,
@@ -227,6 +189,7 @@ impl<'c> Renderer<'c> {
             out: String::new(),
             pen: Pen::new(cfg.color),
             preamble: String::new(),
+            uploads: Vec::new(),
             image_ids: Vec::new(),
             line_no: 0,
             image_rows: Vec::new(),
@@ -278,6 +241,7 @@ impl<'c> Renderer<'c> {
         }
         Document {
             preamble: self.preamble,
+            uploads: self.uploads,
             lines,
             image_ids: self.image_ids,
             diagrams: self.diagrams,

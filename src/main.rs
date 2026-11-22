@@ -10,6 +10,7 @@
 //! images. Every setting martty reads from the environment has the `MARTTY_`
 //! prefix.
 
+mod cache;
 mod diacritics;
 mod heading;
 mod kitty;
@@ -78,9 +79,11 @@ fn run() -> io::Result<()> {
         .and_then(Path::file_name)
         .map_or_else(|| "stdin".to_owned(), |n| n.to_string_lossy().into_owned());
 
+    // Both overlap the terminal probe.
     if io::stdout().is_terminal() {
         HeadingFont::prefetch();
     }
+    render::warm_up(&markdown);
     let mut caps = term::probe();
     // Images go too: placeholders carry the image id in their foreground
     // color, and diagrams and image headings are colored anyway. Without a
@@ -166,12 +169,12 @@ fn run() -> io::Result<()> {
         };
         return pager::run(&options, doc, &pending_input, render);
     }
-    print(&doc)
+    print(doc)
 }
 
-fn print(doc: &Document) -> io::Result<()> {
+fn print(doc: Document) -> io::Result<()> {
     let mut stdout = io::stdout().lock();
-    stdout.write_all(doc.to_ansi().as_bytes())?;
+    stdout.write_all(doc.into_ansi().as_bytes())?;
     stdout.flush()
 }
 
@@ -268,37 +271,31 @@ fn config(
             colors: [5, 4, 6].map(|i| theme.palette[i].unwrap_or(fg)),
         })
     });
-    // Without the feature, mermaid blocks are shown as code.
-    let diagrams = cell
-        .filter(|_| cfg!(feature = "mermaid"))
-        .map(|cell| Diagrams {
-            palette: mermaid::Palette {
-                bg,
-                fg,
-                panel: panel_rgb(bg, fg),
-                accent: theme.palette[4].unwrap_or(fg),
-                ansi: std::array::from_fn(|i| theme.palette[i + 1].unwrap_or(fg)),
-            },
-            cell,
-            // Full screen, a diagram at zoom 1 fills the screen above the pager
-            // status line. In the document it keeps the terminal's text size and
-            // the image height cap; a click opens it larger.
-            max_rows: if fullscreen {
-                u32::try_from(size.rows.saturating_sub(1))
-                    .unwrap_or(u32::MAX)
-                    .clamp(1, kitty::MAX_ROWS)
-            } else {
-                max_rows
-            },
-            zoom,
-            max_upscale: if fullscreen { f32::INFINITY } else { 1.0 },
-            // The pager centres a full-screen diagram itself.
-            center: !fullscreen,
-        });
-    // Without the feature, formulas are shown as code.
-    let math = cell
-        .filter(|_| cfg!(feature = "math"))
-        .map(|cell| MathImages { cell, color: fg });
+    let diagrams = cell.map(|cell| Diagrams {
+        palette: mermaid::Palette {
+            bg,
+            fg,
+            panel: panel_rgb(bg, fg),
+            accent: theme.palette[4].unwrap_or(fg),
+            ansi: std::array::from_fn(|i| theme.palette[i + 1].unwrap_or(fg)),
+        },
+        cell,
+        // Full screen, a diagram at zoom 1 fills the screen above the pager
+        // status line. In the document it keeps the terminal's text size and
+        // the image height cap; a click opens it larger.
+        max_rows: if fullscreen {
+            u32::try_from(size.rows.saturating_sub(1))
+                .unwrap_or(u32::MAX)
+                .clamp(1, kitty::MAX_ROWS)
+        } else {
+            max_rows
+        },
+        zoom,
+        max_upscale: if fullscreen { f32::INFINITY } else { 1.0 },
+        // The pager centres a full-screen diagram itself.
+        center: !fullscreen,
+    });
+    let math = cell.map(|cell| MathImages { cell, color: fg });
     let images = cell.map(|cell| Images {
         cell,
         max_rows,

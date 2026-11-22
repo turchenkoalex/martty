@@ -14,14 +14,14 @@ use crate::term::Rgb;
 
 const BUNDLED_FAMILY: &str = "JetBrains Mono";
 
-pub static FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono-Bold.ttf");
-
-pub struct HeadingFont(Font);
+/// The font is parsed once and shared by every layout, and by the threads
+/// that draw headings.
+#[derive(Clone, Copy)]
+pub struct HeadingFont(&'static Font);
 
 pub struct Bitmap {
     pub width: u32,
     pub height: u32,
-    pub cols: u32,
     /// Straight (non-premultiplied) RGBA.
     pub rgba: Vec<u8>,
 }
@@ -32,7 +32,7 @@ impl HeadingFont {
         static FONT: OnceLock<Option<Font>> = OnceLock::new();
         // Tests measure headings in the bundled font, whatever is installed.
         FONT.get_or_init(|| if cfg!(test) { None } else { configured() }.or_else(bundled))
-            .clone()
+            .as_ref()
             .map(Self)
     }
 
@@ -54,6 +54,15 @@ impl HeadingFont {
         (unit > 0.0).then(|| cell_h as f32 * scale / unit)
     }
 
+    /// Cells one line of `text` takes at `scale`, as [`Self::render`]
+    /// draws it.
+    pub fn cols(&self, text: &str, cell: (u32, u32), scale: f32) -> Option<u32> {
+        let px = self.px_for(cell.1, scale)?;
+        self.0.horizontal_line_metrics(px)?;
+        let advance = self.advance(text, px);
+        Some((advance / cell.0 as f32).ceil().max(1.0) as u32)
+    }
+
     /// Renders one line of `text`, `rows` cells tall and vertically centred.
     /// The width is rounded up to whole cells.
     pub fn render(
@@ -64,10 +73,9 @@ impl HeadingFont {
         rows: u32,
         color: Rgb,
     ) -> Option<Bitmap> {
+        let cols = self.cols(text, cell, scale)?;
         let px = self.px_for(cell.1, scale)?;
         let lm = self.0.horizontal_line_metrics(px)?;
-        let advance = self.advance(text, px);
-        let cols = (advance / cell.0 as f32).ceil().max(1.0) as u32;
         let (width, height) = (cols * cell.0, rows * cell.1);
         let (w, h) = (width as usize, height as usize);
 
@@ -103,7 +111,6 @@ impl HeadingFont {
         Some(Bitmap {
             width,
             height,
-            cols,
             rgba,
         })
     }
@@ -123,7 +130,7 @@ impl HeadingFont {
 }
 
 fn bundled() -> Option<Font> {
-    Font::from_bytes(FONT_BYTES, FontSettings::default()).ok()
+    Font::from_bytes(svg::FONT_BOLD, FontSettings::default()).ok()
 }
 
 /// The bold face of Ghostty's font, when it isn't the bundled one and the
@@ -190,8 +197,8 @@ mod tests {
     #[test]
     fn render_should_fill_exact_cell_box() {
         let bmp = font().render("Hello", (10, 20), 2.0, 2, (255, 0, 0));
-        let (w, h, cols) = bmp.map(|b| (b.width, b.height, b.cols)).unwrap_or_default();
-        assert_eq!((w, h), (cols * 10, 40));
+        let (w, h) = bmp.map(|b| (b.width, b.height)).unwrap_or_default();
+        assert_eq!((w % 10, h), (0, 40));
     }
 
     #[test]
@@ -199,6 +206,14 @@ mod tests {
         let bmp = font().render("Hi", (10, 20), 2.0, 2, (255, 0, 0));
         let inked = bmp.is_some_and(|b| b.rgba.as_chunks::<4>().0.iter().any(|p| p[3] > 0));
         assert!(inked);
+    }
+
+    #[test]
+    fn cols_should_match_rendered_width() {
+        let f = font();
+        let cols = f.cols("Heading", (10, 20), 1.5);
+        let bmp = f.render("Heading", (10, 20), 1.5, 2, (0, 0, 0));
+        assert_eq!(cols, bmp.map(|b| b.width / 10));
     }
 
     #[test]

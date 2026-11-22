@@ -1,24 +1,24 @@
 //! Mermaid diagrams: merman lays them out as SVG the way Mermaid does,
 //! resvg rasterizes that at the terminal's own text size into a box of whole
 //! cells, and kitty graphics shows it. No browser involved.
+//!
+//! Laying a diagram out (merman, then usvg) tells its size in cells;
+//! rasterizing waits until the pager needs the pixels. Laid out trees are
+//! kept for the session, so a zoom or a resize only rasterizes again.
 
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::thread;
 
 use resvg::{tiny_skia, usvg};
 
-use crate::kitty;
+use crate::cache::{self, Lru};
+use crate::kitty::{self, Transmit};
 use crate::picture::svg;
 use crate::term::Rgb;
-
-const FONT_SIZE: f32 = 14.0;
-/// Terminal cells are roughly this much taller than the font size.
-const CELL_TO_FONT: f32 = 1.25;
-/// Bound on the raster (RGBA), whatever the zoom.
-const MAX_PIXELS: f32 = 16_000_000.0;
+use merman_svg::to_svg;
 
 /// Terminal colors the diagram theme is derived from.
-// Only merman reads the colors; without it, diagrams are never drawn.
-#[cfg_attr(not(feature = "mermaid"), expect(dead_code))]
+#[derive(Debug, Clone, Copy, Hash)]
 pub struct Palette {
     pub bg: Rgb,
     pub fg: Rgb,
@@ -29,30 +29,40 @@ pub struct Palette {
     pub ansi: [Rgb; 6],
 }
 
-pub struct Raster {
-    pub width: u32,
-    pub height: u32,
+const FONT_SIZE: f32 = 14.0;
+/// Terminal cells are roughly this much taller than the font size.
+const CELL_TO_FONT: f32 = 1.25;
+/// Bound on the raster (RGBA), whatever the zoom.
+const MAX_PIXELS: f32 = 16_000_000.0;
+/// Laid out diagrams kept for the session.
+const TREES: usize = 64;
+
+type Tree = Result<Arc<usvg::Tree>, String>;
+
+/// A diagram sized for the screen, not drawn yet.
+pub struct Diagram {
     pub cols: u32,
     pub rows: u32,
-    /// Fully opaque, so premultiplied and straight alpha coincide.
-    pub rgba: Vec<u8>,
+    tree: Arc<usvg::Tree>,
+    cell: (u32, u32),
+    /// Pixels per SVG unit.
+    scale: f32,
+    panel: Rgb,
 }
 
-/// Renders `source`. At `zoom` 1 it is as large as fits `view` (cols, rows)
-/// with text at most `max_upscale` × the terminal's; other zooms scale from
-/// there and may overflow the view by up to [`kitty::MAX_COL`] columns, for
-/// the pager to pan.
-pub fn render(
+/// Lays out `source`. At `zoom` 1 it is as large as fits `view` (cols,
+/// rows) with text at most `max_upscale` × the terminal's; other zooms
+/// scale from there and may overflow the view by up to
+/// [`kitty::MAX_COL`] columns, for the pager to pan.
+pub fn layout(
     source: &str,
     palette: &Palette,
     cell: (u32, u32),
     view: (u32, u32),
     zoom: f32,
     max_upscale: f32,
-) -> Result<Raster, String> {
-    let svg = to_svg(source, palette)?;
-    let tree = usvg::Tree::from_str(&svg, svg_options()).map_err(|e| e.to_string())?;
-
+) -> Result<Diagram, String> {
+    let tree = tree(source, palette)?;
     let (cw, ch) = (cell.0.max(1) as f32, cell.1.max(1) as f32);
     let size = tree.size();
     let (sw, sh) = (size.width(), size.height());
@@ -65,48 +75,98 @@ pub fn render(
         .min(max_cols as f32 * cw / sw)
         .min(kitty::MAX_ROWS as f32 * ch / sh)
         .min((MAX_PIXELS / (sw * sh)).sqrt());
-    let (w, h) = (sw * scale, sh * scale);
-    let cols = ((w / cw).ceil() as u32).clamp(1, max_cols);
-    let rows = ((h / ch).ceil() as u32).clamp(1, kitty::MAX_ROWS);
-    let (width, height) = (cols * cell.0, rows * cell.1);
-
-    let mut pixmap = tiny_skia::Pixmap::new(width, height).ok_or("empty diagram")?;
-    let (r, g, b) = palette.panel;
-    pixmap.fill(tiny_skia::Color::from_rgba8(r, g, b, 255));
-    // Centred inside the cell-aligned box, so the terminal never rescales it.
-    let dx = (width as f32 - w) / 2.0;
-    let dy = (height as f32 - h) / 2.0;
-    let transform = tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, dx, dy);
-    resvg::render(&tree, transform, &mut pixmap.as_mut());
-
-    Ok(Raster {
-        width,
-        height,
+    let cols = (((sw * scale) / cw).ceil() as u32).clamp(1, max_cols);
+    let rows = (((sh * scale) / ch).ceil() as u32).clamp(1, kitty::MAX_ROWS);
+    Ok(Diagram {
         cols,
         rows,
-        rgba: pixmap.take(),
+        tree,
+        cell,
+        scale,
+        panel: palette.panel,
     })
 }
 
-/// Bundled JetBrains Mono, with system fonts as a fallback for glyphs it
-/// lacks.
-fn svg_options() -> &'static usvg::Options<'static> {
-    static OPTIONS: OnceLock<usvg::Options<'static>> = OnceLock::new();
-    OPTIONS.get_or_init(|| usvg::Options {
-        fontdb: svg::fonts(),
-        ..usvg::Options::default()
-    })
+impl Diagram {
+    /// The diagram on its panel, filling exactly its cells: fully
+    /// opaque RGBA, so premultiplied and straight alpha coincide.
+    pub fn rasterize(&self) -> Option<(Vec<u8>, (u32, u32))> {
+        let (width, height) = (self.cols * self.cell.0, self.rows * self.cell.1);
+        let mut pixmap = tiny_skia::Pixmap::new(width, height)?;
+        let (r, g, b) = self.panel;
+        pixmap.fill(tiny_skia::Color::from_rgba8(r, g, b, 255));
+        let size = self.tree.size();
+        let (w, h) = (size.width() * self.scale, size.height() * self.scale);
+        // Centred inside the cell-aligned box, so the terminal never
+        // rescales it.
+        let dx = (width as f32 - w) / 2.0;
+        let dy = (height as f32 - h) / 2.0;
+        let transform = tiny_skia::Transform::from_row(self.scale, 0.0, 0.0, self.scale, dx, dy);
+        resvg::render(&self.tree, transform, &mut pixmap.as_mut());
+        Some((pixmap.take(), (width, height)))
+    }
+
+    pub fn transmit(&self) -> Option<Transmit> {
+        let (rgba, size) = self.rasterize()?;
+        Some(Transmit::rgba(&rgba, size, self.cols, self.rows))
+    }
 }
 
-#[cfg(not(feature = "mermaid"))]
-fn to_svg(_source: &str, _palette: &Palette) -> Result<String, String> {
-    Err("built without the mermaid feature".to_owned())
+/// Lays out every diagram not laid out yet, in parallel, so the
+/// document's layout then finds them ready.
+pub fn prefetch(sources: &[&str], palette: &Palette) {
+    let threads = thread::available_parallelism()
+        .map_or(1, usize::from)
+        .min(sources.len());
+    if threads <= 1 {
+        return;
+    }
+    let per_thread = sources.len().div_ceil(threads);
+    thread::scope(|s| {
+        for chunk in sources.chunks(per_thread) {
+            s.spawn(move || {
+                for source in chunk {
+                    let _ = tree(source, palette);
+                }
+            });
+        }
+    });
 }
 
-#[cfg(feature = "mermaid")]
-use merman_svg::to_svg;
+/// merman's SVG for `source` in `palette`, parsed by usvg, from the
+/// session's cache when it was laid out before.
+fn tree(source: &str, palette: &Palette) -> Tree {
+    static TREES_CACHE: OnceLock<Mutex<Lru<Tree>>> = OnceLock::new();
+    let cache = TREES_CACHE.get_or_init(|| Mutex::new(Lru::new(TREES)));
+    let key = cache::key((source, palette));
+    if let Some(tree) = cache.lock().ok().and_then(|mut c| c.get(key)) {
+        return tree;
+    }
+    let tree = to_svg(source, palette).and_then(|svg| {
+        let options = usvg::Options {
+            fontdb: fonts_for(source),
+            ..usvg::Options::default()
+        };
+        usvg::Tree::from_str(&svg, &options)
+            .map(Arc::new)
+            .map_err(|e| e.to_string())
+    });
+    if let Ok(mut c) = cache.lock() {
+        c.insert(key, tree.clone(), 1);
+    }
+    tree
+}
 
-#[cfg(feature = "mermaid")]
+/// Text is measured in the bundled JetBrains Mono. Loading the system
+/// fonts takes ~60 ms, so they are only loaded for glyphs it lacks.
+fn fonts_for(source: &str) -> Arc<usvg::fontdb::Database> {
+    if svg::bundled_covers(source) {
+        svg::bundled_fonts()
+    } else {
+        svg::fonts()
+    }
+}
+
 mod merman_svg {
     use merman::svg::{
         DeterministicTextMeasurer, MeasurementProfileId, TextMeasurementPolicy,
@@ -119,7 +179,8 @@ mod merman_svg {
     use serde_json::{Map, Value, json};
     use unicode_width::UnicodeWidthStr;
 
-    use super::{FONT_SIZE, Palette};
+    use super::FONT_SIZE;
+    use super::Palette;
     use crate::term::{Rgb, luma, mix};
 
     /// Bundled, so the font resvg draws with is the one text was measured in.
@@ -236,7 +297,7 @@ mod merman_svg {
     }
 }
 
-#[cfg(all(test, feature = "mermaid"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -256,46 +317,62 @@ mod tests {
     };
 
     #[test]
-    fn render_should_fill_exact_cell_box() {
-        let r = render("graph LR\n A --> B", &PALETTE, (10, 20), (80, 20), 1.0, 2.0);
-        let dims = r.map(|r| (r.width, r.height, r.cols * 10, r.rows * 20));
-        let ok = dims.is_ok_and(|(w, h, cw, ch)| w == cw && h == ch);
+    fn rasterize_should_fill_exact_cell_box() {
+        let d = layout("graph LR\n A --> B", &PALETTE, (10, 20), (80, 20), 1.0, 2.0);
+        let ok = d.ok().is_some_and(|d| {
+            d.rasterize().is_some_and(|(rgba, size)| {
+                size == (d.cols * 10, d.rows * 20) && rgba.len() == (size.0 * size.1 * 4) as usize
+            })
+        });
         assert!(ok);
     }
 
     #[test]
-    fn render_should_shrink_to_max_cells() {
+    fn layout_should_shrink_to_max_cells() {
         let src = "graph LR\n A --> B --> C --> D --> E --> F --> G --> H";
-        let r = render(src, &PALETTE, (10, 20), (30, 20), 1.0, 2.0);
-        assert!(r.is_ok_and(|r| r.cols <= 30));
+        let d = layout(src, &PALETTE, (10, 20), (30, 20), 1.0, 2.0);
+        assert!(d.is_ok_and(|d| d.cols <= 30));
     }
 
     #[test]
-    fn render_should_fill_view_width_at_zoom_one() {
+    fn layout_should_fill_view_width_at_zoom_one() {
         let src = "graph LR\n A --> B --> C --> D --> E --> F";
-        let r = render(src, &PALETTE, (10, 20), (60, 40), 1.0, 2.0);
-        assert!(r.is_ok_and(|r| r.cols == 60));
+        let d = layout(src, &PALETTE, (10, 20), (60, 40), 1.0, 2.0);
+        assert!(d.is_ok_and(|d| d.cols == 60));
     }
 
     #[test]
-    fn render_should_overflow_view_when_zoomed_in() {
+    fn layout_should_overflow_view_when_zoomed_in() {
         let src = "graph LR\n A --> B --> C --> D --> E --> F";
-        let r = render(src, &PALETTE, (10, 20), (60, 40), 2.0, 2.0);
-        assert!(r.is_ok_and(|r| r.cols > 60));
+        let d = layout(src, &PALETTE, (10, 20), (60, 40), 2.0, 2.0);
+        assert!(d.is_ok_and(|d| d.cols > 60));
     }
 
     #[test]
-    fn render_should_report_parse_errors() {
+    fn layout_should_report_parse_errors() {
+        let d = layout(
+            "this is not mermaid",
+            &PALETTE,
+            (10, 20),
+            (80, 20),
+            1.0,
+            2.0,
+        );
+        assert!(d.is_err());
+    }
+
+    #[test]
+    fn prefetch_should_leave_trees_for_layout() {
+        let sources = [
+            "graph LR\n P1 --> Q",
+            "graph LR\n P2 --> Q",
+            "graph TD\n P3 --> Q",
+        ];
+        prefetch(&sources, &PALETTE);
         assert!(
-            render(
-                "this is not mermaid",
-                &PALETTE,
-                (10, 20),
-                (80, 20),
-                1.0,
-                2.0
-            )
-            .is_err()
+            sources
+                .iter()
+                .all(|s| layout(s, &PALETTE, (10, 20), (80, 20), 1.0, 1.0).is_ok())
         );
     }
 }

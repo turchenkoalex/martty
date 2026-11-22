@@ -62,6 +62,13 @@ fn style_for(stack: &ScopeStack) -> Style {
 }
 
 /// Lines of styled spans, tabs expanded, or `None` for an unknown language.
+/// Compiles the grammars of `langs` ahead of their first block.
+pub(super) fn warm_up(langs: &[String]) {
+    for lang in langs {
+        let _ = highlight(lang, "x = \"s\" // c\n");
+    }
+}
+
 pub(super) fn highlight(lang: &str, text: &str) -> Option<Vec<Vec<Span>>> {
     if lang.is_empty() {
         return None;

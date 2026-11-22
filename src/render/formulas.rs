@@ -1,10 +1,13 @@
 //! `$…$` and `$$…$$` (and ```` ```math ```` blocks) as images, falling back
 //! to code when graphics are off or latex-rust can't render the formula.
 
+use std::sync::Arc;
+
 use super::Renderer;
 use super::images::image_style;
 use super::span::Span;
-use crate::{kitty, math};
+use crate::kitty::{self, Transmit};
+use crate::math;
 
 impl Renderer<'_> {
     /// An inline formula becomes one row of placeholder cells inside the
@@ -21,9 +24,12 @@ impl Renderer<'_> {
             self.push_code(latex.trim());
             return;
         };
-        let id = self.upload(|out, id| {
-            kitty::write_rgba(out, id, &r.rgba, (r.width, r.height), r.cols, r.rows);
-        });
+        let id = self.upload(&Transmit::rgba(
+            &r.rgba,
+            (r.width, r.height),
+            r.cols,
+            r.rows,
+        ));
         let mut style = self.style();
         style.fg = image_style(id).fg;
         self.inline
@@ -39,7 +45,7 @@ impl Renderer<'_> {
         };
         self.flush_inline();
         let start = self.line_no;
-        self.place_formula(&raster);
+        self.place_formula(raster);
         self.add_source(start, latex.trim(), false);
     }
 
@@ -48,7 +54,7 @@ impl Renderer<'_> {
         let Some(raster) = self.math_raster(latex) else {
             return false;
         };
-        self.place_formula(&raster);
+        self.place_formula(raster);
         true
     }
 
@@ -57,11 +63,16 @@ impl Renderer<'_> {
         math::display(latex, m.color, m.cell)
     }
 
-    fn place_formula(&mut self, r: &math::Raster) {
+    /// Already drawn (it is quick), the formula is only compressed when
+    /// it is about to be seen.
+    fn place_formula(&mut self, r: math::Raster) {
         let avail = u32::try_from(self.avail()).unwrap_or(u32::MAX);
         let indent = usize::try_from(avail.saturating_sub(r.cols) / 2).unwrap_or(0);
-        self.place(r.cols, r.rows, indent, |out, id| {
-            kitty::write_rgba(out, id, &r.rgba, (r.width, r.height), r.cols, r.rows);
+        let (cols, rows) = (r.cols, r.rows);
+        let job = Box::new(move || {
+            let t = Transmit::rgba(&r.rgba, (r.width, r.height), r.cols, r.rows);
+            Some(Arc::new(t))
         });
+        self.place(cols, rows, indent, job);
     }
 }

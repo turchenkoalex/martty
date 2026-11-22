@@ -3,6 +3,7 @@
 //! The document is a list of finished lines (images are Unicode placeholder
 //! text, see `kitty.rs`), so scrolling is just redrawing a window of lines.
 //! Redraws are wrapped in synchronized output (DEC 2026) to avoid tearing.
+//! Images are uploaded only as they come within a screen of the view.
 //!
 //! Views form a stack: the document, and on top of it optionally a single
 //! diagram opened full screen (`z`). `+`/`-` re-render
@@ -43,9 +44,9 @@ use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::kitty;
 use crate::render::Document;
 use crate::term::{self, RawMode, Size, Theme};
+use crate::{kitty, progress};
 
 use keys::read_keys;
 use overlay::Overlay;
@@ -232,8 +233,18 @@ impl<'a> Pager<'a> {
         write_out(&out)
     }
 
-    fn redraw(&self) -> io::Result<()> {
-        let mut frame = String::new();
+    /// Draws the screen, first uploading the images on it and on a screen
+    /// above and below, so scrolling to them finds them ready.
+    fn redraw(&mut self) -> io::Result<()> {
+        let rows = self.view_rows();
+        let view = self.view_mut();
+        let near = view.top.saturating_sub(rows)..view.top.saturating_add(2 * rows);
+        let mut frame = if view.doc.has_uploads(near.clone()) {
+            let _busy = progress::Busy::start();
+            view.doc.take_uploads(near)
+        } else {
+            String::new()
+        };
         self.draw(&mut frame);
         write_out(&frame)
     }
