@@ -1,0 +1,7 @@
+/target
+
+# MSVC debug info
+*.pdb
+
+# cargo-mutants output
+**/mutants.out*/

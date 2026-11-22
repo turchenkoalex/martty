@@ -1,0 +1,22 @@
+[package]
+name = "martty"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fontdue = "0.9.5"
+libc = "0.2.191"
+mermaid-rs-renderer = { version = "0.3.1", default-features = false }
+miniz_oxide = "0.9.1"
+pulldown-cmark = { version = "0.13.6", default-features = false }
+resvg = { version = "0.50.0", default-features = false, features = ["text", "system-fonts"] }
+unicode-width = "0.2.3"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+
+[profile.release]
+lto = true
+strip = true

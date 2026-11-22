@@ -1,0 +1,226 @@
+//! martty — a tiny Markdown renderer tuned for Ghostty.
+//!
+//! Usage: `martty [-p|-P] [FILE]` (reads stdin when FILE is absent or `-`).
+//! Output taller than the screen opens a `less`-like pager; `-p` forces it,
+//! `-P` disables it. Set `MARTTY_TEXT_SIZING=0|1` / `MARTTY_IMAGES=0|1` to
+//! override capability detection.
+
+mod diacritics;
+mod heading;
+mod kitty;
+mod mermaid;
+mod pager;
+mod render;
+mod style;
+mod term;
+
+use std::io::{self, IsTerminal, Read, Write};
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use heading::HeadingFont;
+use pager::Layout;
+use render::{Config, Diagrams, Document, HeadingImages, Images};
+use style::Color;
+use term::{Caps, Rgb, Size, luma, mix};
+
+const USAGE: &str = "usage: martty [-p|--pager] [-P|--no-pager] [FILE]";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Paging {
+    Auto,
+    Always,
+    Never,
+}
+
+struct Args {
+    paging: Paging,
+    file: Option<PathBuf>,
+}
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) if e.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("martty: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> io::Result<()> {
+    let args = parse_args()?;
+    let (markdown, base_dir) = read_input(args.file.as_deref())?;
+    let title = args
+        .file
+        .as_deref()
+        .and_then(Path::file_name)
+        .map_or_else(|| "stdin".to_owned(), |n| n.to_string_lossy().into_owned());
+
+    let caps = term::probe();
+    let mut next_id = image_id_seed();
+    let mut render = |layout: Layout<'_>, size: Size, zoom: f32| {
+        let first_id = next_id;
+        // Fresh ids per layout, so a re-render never reuses live images.
+        next_id = next_id.wrapping_add(0x1000);
+        match layout {
+            Layout::Document => {
+                let config = config(&caps, size, &base_dir, first_id, zoom, false);
+                render::render(&markdown, &config)
+            }
+            Layout::Diagram(source) => {
+                let config = config(&caps, size, &base_dir, first_id, zoom, true);
+                render::render(&format!("```mermaid\n{source}\n```\n"), &config)
+            }
+        }
+    };
+
+    let size = term::size();
+    let doc = render(Layout::Document, size, 1.0);
+    let page = io::stdout().is_terminal()
+        && match args.paging {
+            Paging::Always => true,
+            Paging::Never => false,
+            Paging::Auto => doc.lines.len() >= size.rows,
+        };
+    if page {
+        return pager::run(&title, doc, render);
+    }
+    print(&doc)
+}
+
+fn print(doc: &Document) -> io::Result<()> {
+    let mut stdout = io::stdout().lock();
+    stdout.write_all(doc.to_ansi().as_bytes())?;
+    stdout.flush()
+}
+
+fn parse_args() -> io::Result<Args> {
+    let mut args = Args {
+        paging: Paging::Auto,
+        file: None,
+    };
+    for arg in std::env::args_os().skip(1) {
+        match arg.to_str() {
+            Some("-p" | "--pager") => args.paging = Paging::Always,
+            Some("-P" | "--no-pager") => args.paging = Paging::Never,
+            Some("-h" | "--help") => {
+                println!("{USAGE}");
+                std::process::exit(0);
+            }
+            Some(flag) if flag.starts_with('-') && flag != "-" => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("unknown option {flag}\n{USAGE}"),
+                ));
+            }
+            _ => args.file = Some(PathBuf::from(arg)),
+        }
+    }
+    Ok(args)
+}
+
+/// Markdown text plus the directory relative image paths resolve against.
+fn read_input(file: Option<&Path>) -> io::Result<(String, PathBuf)> {
+    match file {
+        Some(path) if path != Path::new("-") => {
+            let text = std::fs::read_to_string(path).map_err(|e| with_path(e, path))?;
+            let dir = path
+                .parent()
+                .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+            Ok((text, dir))
+        }
+        _ if io::stdin().is_terminal() => Err(io::Error::new(io::ErrorKind::InvalidInput, USAGE)),
+        _ => {
+            let mut buf = String::new();
+            io::stdin().read_to_string(&mut buf)?;
+            Ok((buf, PathBuf::from(".")))
+        }
+    }
+}
+
+/// `fullscreen` lays out a lone diagram: no cap on its text size.
+fn config(
+    caps: &Caps,
+    size: Size,
+    base_dir: &Path,
+    first_image_id: u32,
+    zoom: f32,
+    fullscreen: bool,
+) -> Config {
+    let cell = caps.graphics.then(|| caps.cell.or(size.cell)).flatten();
+    let bg = caps.bg.unwrap_or((0x1e, 0x1e, 0x1e));
+    let fg = caps.fg.unwrap_or_else(|| contrast(bg));
+    let max_rows = u32::try_from(size.rows * 2 / 3)
+        .unwrap_or(u32::MAX)
+        .clamp(4, kitty::MAX_ROWS);
+
+    let headings = cell.filter(|_| !caps.text_sizing).and_then(|cell| {
+        Some(HeadingImages {
+            font: HeadingFont::load()?,
+            cell,
+            colors: [5, 4, 6].map(|i| caps.palette[i].unwrap_or(fg)),
+        })
+    });
+    let diagrams = cell.map(|cell| Diagrams {
+        palette: mermaid::Palette {
+            bg,
+            fg,
+            panel: panel_rgb(bg, fg),
+            accent: caps.palette[4].unwrap_or(fg),
+        },
+        cell,
+        // At zoom 1 a diagram fits the screen above the pager status line.
+        max_rows: u32::try_from(size.rows.saturating_sub(1))
+            .unwrap_or(u32::MAX)
+            .clamp(1, kitty::MAX_ROWS),
+        zoom,
+        max_upscale: if fullscreen { f32::INFINITY } else { 2.0 },
+    });
+    let images = cell.map(|cell| Images {
+        cell,
+        max_rows,
+        base_dir: base_dir.to_path_buf(),
+    });
+    Config {
+        width: size.cols,
+        text_sizing: caps.text_sizing,
+        code_bg: caps.bg.map(|bg| {
+            let (r, g, b) = panel_rgb(bg, fg);
+            Color::Rgb(r, g, b)
+        }),
+        images,
+        headings,
+        diagrams,
+        first_image_id,
+    }
+}
+
+/// Image ids live in the terminal, shared with every other program in it;
+/// start from a per-process value to make collisions unlikely.
+fn image_id_seed() -> u32 {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos());
+    ((std::process::id().wrapping_mul(2_654_435_761) ^ nanos) & 0x00FF_FFFF).max(1)
+}
+
+fn with_path(e: io::Error, path: &Path) -> io::Error {
+    io::Error::new(e.kind(), format!("{}: {e}", path.display()))
+}
+
+/// Background for code and diagrams: the terminal background nudged ~8%
+/// towards the foreground, so it fits whatever Ghostty theme is active.
+fn panel_rgb(bg: Rgb, fg: Rgb) -> Rgb {
+    mix(bg, fg, 0.08)
+}
+
+fn contrast(bg: Rgb) -> Rgb {
+    if luma(bg) < 128.0 {
+        (255, 255, 255)
+    } else {
+        (0, 0, 0)
+    }
+}
