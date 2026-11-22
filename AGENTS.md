@@ -2,14 +2,18 @@
 
 ## What is this
 
-A Markdown viewer for the terminal, built for [Ghostty](https://ghostty.org) only. It
+A Markdown viewer for the terminal, built for [Ghostty](https://ghostty.org) and Rex,
+which is built on libghostty. It
 renders Markdown to ANSI text, draws images, Mermaid diagrams and H1–H3 headings with
 kitty graphics, and shows long output in a `less`-like pager. `README.md` describes the
 user-facing behavior; keep it in sync when that behavior changes.
 
-**Ghostty is the only target.** Use what it supports (kitty graphics with Unicode
-placeholders, OSC 8, synchronized output, theme color queries) and don't add workarounds
-for other terminals. When a capability is missing, fall back to plain styled text.
+**Ghostty and Rex are the only targets.** Use what Ghostty supports (kitty graphics with
+Unicode placeholders, OSC 8, synchronized output, theme color queries); Rex shares its
+terminal core, so the same escape sequences work there. The one difference is outside the
+terminal: the font for image headings comes from Ghostty's config or Rex's macOS defaults
+(`heading.rs`). Don't add workarounds for other terminals. When a capability is missing,
+fall back to plain styled text.
 
 ## Commands
 

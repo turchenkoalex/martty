@@ -1,7 +1,8 @@
 //! Big headings as images. Ghostty has no OSC 66 yet, so we rasterize the
 //! heading ourselves into a box of whole cells, so the terminal shows it
-//! pixel-for-pixel. The font is the bold face of Ghostty's `font-family`
-//! when it is installed, else the bundled JetBrains Mono (Ghostty's default).
+//! pixel-for-pixel. The font is the bold face of the terminal's font (Ghostty's
+//! `font-family`, or the one chosen in Rex) when it is installed, else the
+//! bundled JetBrains Mono (Ghostty's default).
 
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
@@ -36,7 +37,7 @@ impl HeadingFont {
             .map(Self)
     }
 
-    /// Starts finding the font in the background (asking Ghostty for its
+    /// Starts finding the font in the background (asking the terminal's
     /// config, maybe loading system fonts), so it overlaps the terminal probe.
     pub fn prefetch() {
         std::thread::spawn(Self::load);
@@ -133,10 +134,15 @@ fn bundled() -> Option<Font> {
     Font::from_bytes(svg::FONT_BOLD, FontSettings::default()).ok()
 }
 
-/// The bold face of Ghostty's font, when it isn't the bundled one and the
-/// system has it. Only then are the system fonts loaded, which takes a while.
+/// The bold face of the terminal's font, when it isn't the bundled one and
+/// the system has it. Only then are the system fonts loaded, which takes a
+/// while.
 fn configured() -> Option<Font> {
-    let family = ghostty_font_family()?;
+    let family = if std::env::var_os("TERM_PROGRAM").is_some_and(|p| p == "rex") {
+        rex_font_family()
+    } else {
+        ghostty_font_family()
+    }?;
     if family.eq_ignore_ascii_case(BUNDLED_FAMILY) {
         return None;
     }
@@ -171,6 +177,21 @@ fn ghostty_font_family() -> Option<String> {
         .ok()
         .filter(|o| o.status.success())?;
     font_family(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// The font picked in Rex's settings, kept in its macOS defaults. Rex is
+/// built on libghostty but has no Ghostty config; `None` (the bundled font)
+/// when the setting was never changed.
+fn rex_font_family() -> Option<String> {
+    let output = Command::new("defaults")
+        .args(["read", "com.superlogical.rex", "Workspace.terminalFontName"])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    let family = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    (!family.is_empty()).then_some(family)
 }
 
 /// `font-family-bold` if set, else `font-family`; each may repeat for

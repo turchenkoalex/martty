@@ -5,6 +5,10 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+### New
+
+- **Rex is supported.** It is built on libghostty, so images, diagrams, headings, theme switches and copying work as in Ghostty, and big headings are drawn in the font chosen in Rex's settings.
+
 ### Fixed
 
 - **Search finds H1–H3 headings.** They are drawn as images, so `/` skipped them; now it moves to a heading that matches and counts it, without reversing its picture.

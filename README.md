@@ -4,8 +4,9 @@
 
 **Markdown, rendered properly, right in your terminal.**
 
-A tiny, fast Markdown viewer built for [Ghostty](https://ghostty.org), with real images,
-Mermaid diagrams, big headings and a `less`-style pager.
+A tiny, fast Markdown viewer built for [Ghostty](https://ghostty.org) (and Rex, which is
+built on libghostty), with real images, Mermaid diagrams, big headings and a `less`-style
+pager.
 
 🌐 **Website: [turchenkoalex.github.io/martty](https://turchenkoalex.github.io/martty/)**,
 a one-page tour: what the rendered output looks like, the pager keys and how to install.
@@ -28,8 +29,9 @@ of asterisks.
   protocol; animated GIF and WebP play as kitty animations.
 - 📊 **Mermaid diagrams.** Flowcharts, sequence diagrams, pie charts and more, rendered
   locally without a browser and colored to match your Ghostty theme.
-- 🔠 **Big headings.** H1–H3 are drawn at large sizes in the bold face of your Ghostty
-  `font-family`, or in the bundled JetBrains Mono when that font isn't installed.
+- 🔠 **Big headings.** H1–H3 are drawn at large sizes in the bold face of your terminal's
+  font (Ghostty's `font-family`, or the font chosen in Rex), or in the bundled JetBrains
+  Mono when that font isn't installed.
 - ∑ **Math.** LaTeX formulas, inline and display, typeset with TeX's rules in STIX Two
   Math.
 - 🎨 **Theme-aware.** Highlighted code, diagrams and headings take their colors from your
@@ -279,8 +281,8 @@ file draws again only what changed.
 
 ## Limitations
 
-- **Ghostty only, by design.** Other terminals with kitty graphics may work, but they are
-  not a goal.
+- **Ghostty and Rex only, by design.** Rex is built on libghostty and gets every feature.
+  Other terminals with kitty graphics may work, but they are not a goal.
 - Remote images are fetched before the document is shown, so a slow server delays the
   start (up to the 10 s timeout).
 - Headings drawn as images can't be copied as text by selecting them with the mouse (`c`
