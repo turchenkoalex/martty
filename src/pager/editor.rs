@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::{ENTER, LEAVE, Layout, Pager, Params, free_images, write_out};
+use crate::panics;
 use crate::render::{self, Document};
 use crate::term::RawMode;
 
@@ -68,6 +69,7 @@ impl Pager<'_> {
         }
         out.push_str(LEAVE);
         write_out(&out)?;
+        panics::set_alternate_screen(false);
         let status = {
             let _paused = raw.pause()?;
             command(&editor, line, &path).status()
@@ -75,6 +77,7 @@ impl Pager<'_> {
         // Back on a fresh alternate screen: the images freed above are sent
         // again by laying every view out, which also picks up the edits.
         write_out(ENTER)?;
+        panics::set_alternate_screen(true);
         for depth in 0..self.views.len() {
             self.relayout(depth, render)?;
         }

@@ -8,11 +8,15 @@ mod scale;
 pub mod svg;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::kitty;
 
 /// Ghostty decodes PNG itself; anything bigger is not worth decoding.
 const MAX_BYTES: usize = 64 << 20;
+/// Largest bitmap decoded, in pixels (256 MB as RGBA). The size comes from
+/// the file's header, so a few bytes could otherwise ask for gigabytes.
+const MAX_PIXELS: u64 = 64 << 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Format {
@@ -25,7 +29,7 @@ enum Format {
 
 /// An image file whose format and size are known, not yet decoded.
 pub struct Picture {
-    data: Vec<u8>,
+    data: Arc<Vec<u8>>,
     format: Format,
     /// Natural size: pixels for bitmaps, CSS pixels for SVG.
     size: (u32, u32),
@@ -58,22 +62,29 @@ impl Picture {
     /// the size. `path` is where the file came from, for SVG references.
     pub fn new(data: Vec<u8>, path: &Path) -> Option<Self> {
         Self::with_refs(
-            data,
+            Arc::new(data),
             path,
             Refs::Local(path.parent().map(Path::to_path_buf)),
         )
     }
 
     /// An image downloaded from `name` (the URL's path): an SVG may embed
-    /// only `data:` images, never local files.
-    pub fn new_remote(data: Vec<u8>, name: &Path) -> Option<Self> {
+    /// only `data:` images, never local files. The bytes are shared with
+    /// the session's download cache.
+    pub fn new_remote(data: Arc<Vec<u8>>, name: &Path) -> Option<Self> {
         Self::with_refs(data, name, Refs::DataOnly)
     }
 
-    fn with_refs(data: Vec<u8>, path: &Path, refs: Refs) -> Option<Self> {
+    /// Decoders and usvg parse untrusted bytes; one that panics means the
+    /// image can't be shown.
+    fn with_refs(data: Arc<Vec<u8>>, path: &Path, refs: Refs) -> Option<Self> {
         if data.len() > MAX_BYTES {
             return None;
         }
+        crate::panics::catch(|| Self::recognize(data, path, refs))
+    }
+
+    fn recognize(data: Arc<Vec<u8>>, path: &Path, refs: Refs) -> Option<Self> {
         let format = sniff(&data, path)?;
         let svg = match format {
             Format::Svg => Some(svg::Image::new(&data, refs)?),
@@ -84,7 +95,10 @@ impl Picture {
             Format::Svg => svg.as_ref()?.size(),
             _ => decode::size(format, &data)?,
         };
-        (size.0 > 0 && size.1 > 0).then_some(Self {
+        let pixels = u64::from(size.0) * u64::from(size.1);
+        // SVG is rasterized at the size of its cell box, not its own.
+        let fits = format == Format::Svg || pixels <= MAX_PIXELS;
+        (size.0 > 0 && size.1 > 0 && fits).then_some(Self {
             data,
             format,
             size,
@@ -144,6 +158,22 @@ impl Encoded<'_> {
     }
 }
 
+/// A local image file, read only when it is a regular file of at most
+/// `MAX_BYTES`: never a device (`/dev/zero`) or a FIFO, which would hang.
+pub fn read_file(path: &Path) -> Option<Vec<u8>> {
+    use std::io::Read;
+
+    let file = std::fs::File::open(path).ok()?;
+    let meta = file.metadata().ok()?;
+    let limit = u64::try_from(MAX_BYTES).ok()?;
+    if !meta.is_file() || meta.len() > limit {
+        return None;
+    }
+    let mut data = Vec::new();
+    file.take(limit + 1).read_to_end(&mut data).ok()?;
+    (data.len() <= MAX_BYTES).then_some(data)
+}
+
 fn sniff(data: &[u8], path: &Path) -> Option<Format> {
     if data.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Some(Format::Png);
@@ -181,6 +211,20 @@ mod tests {
         assert_eq!(sniff(b"RIFF\0\0\0\0WEBPVP8 ", none), Some(Format::Webp));
         assert_eq!(sniff(b"  <svg xmlns=''/>", none), Some(Format::Svg));
         assert_eq!(sniff(b"hello", none), None);
+    }
+
+    #[test]
+    fn new_should_refuse_bitmaps_too_large_to_decode() {
+        let header = b"GIF89a\xff\xff\xff\xff\0\0\0".to_vec();
+        assert!(Picture::new(header, Path::new("huge.gif")).is_none());
+    }
+
+    #[test]
+    fn read_file_should_refuse_devices_and_directories() {
+        assert!(read_file(Path::new("/dev/zero")).is_none());
+        assert!(read_file(Path::new(env!("CARGO_MANIFEST_DIR"))).is_none());
+        let demo = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/demo.gif");
+        assert!(read_file(&demo).is_some());
     }
 
     fn asset(name: &str) -> (Picture, (u32, u32)) {

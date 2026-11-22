@@ -60,6 +60,7 @@ src/
 ├── math.rs        # LaTeX → latex-rust SVG → resvg → kitty
 ├── heading.rs     # H1–H3 rasterized with fontdue in Ghostty's font or bundled JetBrains Mono
 ├── progress.rs    # Ghostty's progress indicator (OSC 9;4) during slow layouts
+├── panics.rs      # panics in parsers of untrusted input caught; messages kept off the pager screen
 └── pager/         # alternate-screen pager
     ├── mod.rs     # `run` loop, view stack, relayout, following files, terminal enter/leave
     ├── view.rs    # one view: document, scroll, pan, zoom, marks; position across relayouts
@@ -83,6 +84,10 @@ src/
   at once. Jobs run on other threads, so what they capture must be `Send`; wrap the work in
   `cache::transmit` with a key of everything the pixels depend on. Only inline formulas go
   straight into `Document::preamble`.
+- A document is untrusted. Text reaches the terminal only through `Span::new`, which shows
+  control characters as symbols (`␛`), and URLs only through `links::resolve`, which
+  percent-encodes them; keep it that way. Calls into merman, usvg/resvg, latex-rust,
+  syntect and the decoders go through `panics::catch`, so a panic there falls back to text.
 - Terminal capabilities come from the single probe in `term.rs`. Add new queries to that
   round-trip, before the DA1 sentinel, instead of a separate one. `MARTTY_IMAGES` and
   `MARTTY_TEXT_SIZING` override detection.

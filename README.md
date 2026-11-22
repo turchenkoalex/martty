@@ -188,7 +188,7 @@ The pager follows `less` conventions. `?` shows the keys in the pager.
 | `w` | Switch wide code blocks and tables between wrapped (the default) and their natural width, panned with `h`/`l` |
 | `+` `=` / `-` `_` / `0` | Zoom images and diagrams in / out / reset |
 | `Tab` / `Shift-Tab` | Select the next / previous link, scrolling to it |
-| `Enter` | Open the selected link: `#heading` jumps to it, a relative `.md` file opens in the pager, anything else opens with `open` (`xdg-open` on Linux) |
+| `Enter` | Open the selected link: `#heading` jumps to it, a relative `.md` file opens in the pager, an `http`, `https` or `mailto` link or another local file opens with `open` (`xdg-open` on Linux). Other schemes, programs, scripts and app bundles are not opened |
 | `Backspace` `H` | Go back from an opened file or a full-screen diagram |
 | `o` | Open the diagram on screen full screen |
 | `o` `Space` `Esc` `q` | Close the full-screen diagram |

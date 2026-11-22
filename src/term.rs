@@ -201,8 +201,22 @@ pub fn wait_readable(fd: RawFd, timeout: Duration) -> bool {
     ready > 0
 }
 
+/// Whether `buf` holds a DA1 reply, `CSI ? digits;… c`. Other `CSI ?`
+/// sequences (a DEC 2031 theme notification) don't count, nor does a `c`
+/// further on, in a color reply's hex digits.
 fn has_da1(buf: &[u8]) -> bool {
-    find(buf, b"\x1b[?").is_some_and(|i| buf[i..].contains(&b'c'))
+    let mut rest = buf;
+    while let Some(i) = find(rest, b"\x1b[?") {
+        rest = &rest[i + 3..];
+        let params = rest
+            .iter()
+            .take_while(|b| b.is_ascii_digit() || **b == b';')
+            .count();
+        if rest.get(params) == Some(&b'c') {
+            return true;
+        }
+    }
+    false
 }
 
 fn parse_response(resp: &[u8]) -> Caps {
@@ -306,8 +320,11 @@ fn osc_color(resp: &[u8], prefix: &[u8]) -> Option<Rgb> {
     let end = rest.iter().position(|b| *b == 0x1b || *b == 0x07)?;
     let body = std::str::from_utf8(&rest[..end]).ok()?;
     let mut channels = body.split('/').map(|hex| {
+        if !(1..=4).contains(&hex.len()) {
+            return None;
+        }
         let v = u32::from_str_radix(hex, 16).ok()?;
-        let max = (1u32 << (4 * hex.len().min(4))) - 1;
+        let max = (1u32 << (4 * hex.len())) - 1;
         u8::try_from(v * 255 / max).ok()
     });
     Some((channels.next()??, channels.next()??, channels.next()??))
@@ -344,6 +361,7 @@ impl RawMode {
         if unsafe { libc::tcgetattr(fd, term.as_mut_ptr()) } != 0 {
             return Err(io::Error::last_os_error());
         }
+        // SAFETY: tcgetattr succeeded, so `term` is initialised.
         let saved = unsafe { term.assume_init() };
         let mut raw = saved;
         raw.c_lflag &= !(libc::ICANON | libc::ECHO);
@@ -451,6 +469,17 @@ mod tests {
     #[test]
     fn strip_replies_should_keep_lone_escape() {
         assert_eq!(strip_replies(b"\x1b"), b"\x1b");
+    }
+
+    #[test]
+    fn has_da1_should_skip_other_private_sequences() {
+        assert!(!has_da1(b"\x1b[?997;1n\x1b]10;rgb:1c1c/1c1c/1c1c\x1b\\"));
+        assert!(has_da1(b"\x1b[?997;1n\x1b]10;rgb:1c1c\x1b\\\x1b[?62;22c"));
+    }
+
+    #[test]
+    fn osc_color_should_refuse_overlong_channels() {
+        assert_eq!(osc_color(b"]11;rgb:ffffffff/0/0\x07", b"]11;rgb:"), None);
     }
 
     #[test]

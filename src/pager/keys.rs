@@ -32,13 +32,57 @@ pub(super) enum Key {
 }
 
 /// Waits up to `POLL` for input. `None` on timeout.
-pub(super) fn read_keys(tty: &mut File) -> io::Result<Option<Vec<Key>>> {
+///
+/// A read that fills the buffer may end inside a key's sequence (wheel
+/// scrolling queues arrows during a slow layout); that tail waits in
+/// `carry` for the rest of it, or for the next timeout.
+pub(super) fn read_keys(tty: &mut File, carry: &mut Vec<u8>) -> io::Result<Option<Vec<Key>>> {
     if !wait_readable(tty.as_raw_fd(), POLL) {
-        return Ok(None);
+        if carry.is_empty() {
+            return Ok(None);
+        }
+        return Ok(Some(parse_keys(&std::mem::take(carry))));
     }
     let mut buf = [0u8; 1024];
     let n = tty.read(&mut buf)?;
-    Ok(Some(parse_keys(&buf[..n])))
+    let mut bytes = std::mem::take(carry);
+    bytes.extend_from_slice(&buf[..n]);
+    let end = if n == buf.len() {
+        complete_len(&bytes)
+    } else {
+        bytes.len()
+    };
+    carry.extend_from_slice(&bytes[end..]);
+    Ok(Some(parse_keys(&bytes[..end])))
+}
+
+/// Length of `bytes` without a key sequence or UTF-8 character cut short
+/// at its end.
+fn complete_len(bytes: &[u8]) -> usize {
+    if let Some(esc) = bytes.iter().rposition(|&b| b == 0x1b) {
+        let complete = match bytes.get(esc + 1) {
+            None => false,
+            Some(b'[' | b'O') => bytes[esc + 2..].iter().any(|c| (0x40..=0x7e).contains(c)),
+            Some(_) => true,
+        };
+        if !complete {
+            return esc;
+        }
+    }
+    let Some(lead) = bytes.iter().rposition(|&b| b & 0xc0 != 0x80) else {
+        return bytes.len();
+    };
+    let len = match bytes[lead] {
+        0xf0.. => 4,
+        0xe0.. => 3,
+        0xc0.. => 2,
+        _ => 1,
+    };
+    if lead + len > bytes.len() {
+        lead
+    } else {
+        bytes.len()
+    }
 }
 
 pub(super) fn parse_keys(buf: &[u8]) -> Vec<Key> {
@@ -178,6 +222,15 @@ mod tests {
     fn parse_keys_should_report_theme_change() {
         let keys = parse_keys(b"\x1b[?997;1n\x1b[?997;2nj");
         assert_eq!(keys, [Key::ThemeChanged, Key::ThemeChanged, Key::Char('j')]);
+    }
+
+    #[test]
+    fn complete_len_should_hold_back_cut_sequences() {
+        assert_eq!(complete_len(b"j\x1b[A\x1b["), 4);
+        assert_eq!(complete_len(b"j\x1b"), 1);
+        assert_eq!(complete_len("jж".as_bytes()[..2].as_ref()), 1);
+        assert_eq!(complete_len(b"j\x1b[1;5A"), 7);
+        assert_eq!(complete_len("jж".as_bytes()), 3);
     }
 
     #[test]

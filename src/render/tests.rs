@@ -539,3 +539,16 @@ fn heading_lines_should_match_rendered_headings() {
     assert_eq!(heading_lines(md), [5, 11, 14]);
     assert_eq!(doc.headings.len(), 3);
 }
+
+#[test]
+fn render_should_never_pass_escapes_from_the_document() {
+    let md = "a \x1b]52;c;eA==\x07 &#27;]0;t&#7; `\x1b[31m`\n\n```\n\x1b]2;x\x07\n```\n\n<https://e.com/\x1b>\n";
+    let out = render(md, &plain_config());
+    // The only escapes left are martty's own SGR and OSC 8.
+    let ours = |rest: &str| rest.starts_with('[') || rest.starts_with("]8;;");
+    assert!(
+        out.match_indices('\x1b').all(|(i, _)| ours(&out[i + 1..])),
+        "{out:?}"
+    );
+    assert!(out.contains("␛]52;c;eA==␇"), "{out:?}");
+}

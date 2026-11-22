@@ -146,9 +146,75 @@ pub(super) fn is_markdown(path: &Path) -> bool {
         .is_some_and(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
 }
 
+/// Schemes handed to the system. A document is untrusted, and others
+/// launch apps (`vscode:`, `x-apple.systempreferences:`, `ssh:`).
+const SCHEMES: &[&str] = &["http", "https", "mailto"];
+
+/// Files that `open`/`xdg-open` would run instead of show.
+const LAUNCHABLE: &[&str] = &[
+    "app",
+    "command",
+    "tool",
+    "terminal",
+    "scpt",
+    "applescript",
+    "workflow",
+    "action",
+    "pkg",
+    "mpkg",
+    "jar",
+    "webloc",
+    "inetloc",
+    "fileloc",
+    "desktop",
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "py",
+    "rb",
+    "pl",
+    "exe",
+];
+
+/// Opens a URL from a link with the system, if its scheme is one that only
+/// shows something; returns a status message.
+pub(super) fn open_url(url: &str) -> String {
+    let scheme = url.split_once(':').map_or("", |(s, _)| s);
+    if !SCHEMES.iter().any(|s| s.eq_ignore_ascii_case(scheme)) {
+        return format!("Not opened: {url} (only http, https and mailto links open)");
+    }
+    open_external(url.as_ref())
+}
+
+/// Opens a local file from a link with the system, unless it is a
+/// program, a script or a directory (an app bundle); returns a status
+/// message.
+pub(super) fn open_file(path: &Path) -> String {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return format!("No such file: {}", path.display());
+    };
+    if launchable(path, &meta) {
+        return format!(
+            "Not opened: {} (programs aren't run from links)",
+            path.display()
+        );
+    }
+    open_external(path.as_os_str())
+}
+
+fn launchable(path: &Path, meta: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    let ext = path.extension().and_then(OsStr::to_str).unwrap_or("");
+    !meta.is_file()
+        || meta.permissions().mode() & 0o111 != 0
+        || LAUNCHABLE.iter().any(|e| e.eq_ignore_ascii_case(ext))
+}
+
 /// Hands a URL or file to the system (`open` on macOS, `xdg-open`
 /// elsewhere) and returns a status message.
-pub(super) fn open_external(target: &OsStr) -> String {
+fn open_external(target: &OsStr) -> String {
     let opener = if cfg!(target_os = "macos") {
         "open"
     } else {
@@ -210,6 +276,27 @@ mod tests {
             line(&link("a", "two")),
         ];
         assert_eq!(find(&lines).len(), 2);
+    }
+
+    #[test]
+    fn open_url_should_refuse_schemes_that_launch_apps() {
+        assert!(open_url("vscode://file/etc/passwd").starts_with("Not opened"));
+        assert!(open_url("javascript:alert(1)").starts_with("Not opened"));
+    }
+
+    #[test]
+    fn open_file_should_refuse_programs_and_directories() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        assert!(open_file(root).starts_with("Not opened"));
+        assert!(open_file(Path::new("/bin/sh")).starts_with("Not opened"));
+        let meta = std::fs::metadata(root.join("Cargo.toml")).ok();
+        assert!(meta.is_some_and(|m| !launchable(Path::new("Cargo.toml"), &m)));
+        assert!(launchable_name("run.command"));
+    }
+
+    fn launchable_name(name: &str) -> bool {
+        let meta = std::fs::metadata(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"));
+        meta.is_ok_and(|m| launchable(Path::new(name), &m))
     }
 
     #[test]

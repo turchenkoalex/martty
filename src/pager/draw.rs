@@ -6,6 +6,7 @@ use super::Pager;
 use super::links;
 use super::overlay::Overlay;
 use super::view::Kind;
+use crate::render::visible_controls;
 
 impl Pager<'_> {
     /// Left and top margins that centre a full-screen diagram.
@@ -62,7 +63,12 @@ impl Pager<'_> {
         let row = self.size.rows.max(1);
         let right = self.position().filter(|p| p.width() < self.size.cols);
         let right_width = right.as_deref().map_or(0, UnicodeWidthStr::width);
-        let status = truncate(&self.status(), self.size.cols - right_width);
+        // Messages name files and URLs, which may hold control characters.
+        let status = self.status();
+        let status = truncate(
+            &visible_controls(&status, false),
+            self.size.cols - right_width,
+        );
         let used = status.width();
         let pad = self.size.cols - right_width - used;
         let right = right.unwrap_or_default();

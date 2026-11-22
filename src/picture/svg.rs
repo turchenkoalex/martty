@@ -102,7 +102,16 @@ fn parse(data: &[u8], refs: &Refs, fontdb: Arc<usvg::fontdb::Database>) -> Optio
         ..usvg::Options::default()
     };
     match refs {
-        Refs::Local(dir) => options.resources_dir.clone_from(dir),
+        Refs::Local(dir) => {
+            options.resources_dir.clone_from(dir);
+            // usvg's own resolver reads any path whole, `/dev/zero` too.
+            let by_content = usvg::ImageHrefResolver::default_data_resolver();
+            options.image_href_resolver.resolve_string = Box::new(move |href, opts| {
+                let path = opts.get_abs_path(std::path::Path::new(href));
+                let data = super::read_file(&path)?;
+                by_content("text/plain", Arc::new(data), opts)
+            });
+        }
         Refs::DataOnly => options.image_href_resolver.resolve_string = Box::new(|_, _| None),
     }
     usvg::Tree::from_data(data, &options).ok()

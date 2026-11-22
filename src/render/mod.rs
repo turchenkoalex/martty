@@ -42,7 +42,9 @@ use html::OpenTag;
 use images::PendingImage;
 use inline::link_style;
 use layout::Container;
+pub use links::percent_decode;
 pub use scan::warm_up;
+pub use span::visible_controls;
 use span::{Pen, Span};
 use table::Table;
 

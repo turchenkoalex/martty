@@ -1,28 +1,74 @@
 //! Link targets and heading anchors.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::path::Path;
 
 /// The URL a link points to, as OSC 8 should carry it: URLs with a scheme
 /// and `#fragment`s as they are, relative paths as absolute `file://` URLs,
 /// since Ghostty and the pager can't know what they were relative to.
+///
+/// Control characters are percent-encoded wherever they are: the URL goes
+/// into an OSC 8 sequence, which one of them would end early.
 pub(super) fn resolve(base: &Path, url: &str) -> String {
     if url.is_empty() || url.starts_with('#') || has_scheme(url) {
-        return url.to_owned();
+        return encode(url, |c| c.is_control());
     }
     let (path, fragment) = match url.split_once('#') {
         Some((path, fragment)) => (path, Some(fragment)),
         None => (url, None),
     };
-    let path = path.replace("%20", " ");
-    let joined = base.join(&path);
+    let joined = base.join(percent_decode(path));
     let absolute = std::path::absolute(&joined).unwrap_or(joined);
-    let mut out = format!("file://{}", absolute.display()).replace(' ', "%20");
+    let mut out = "file://".to_owned();
+    out.push_str(&encode(&absolute.to_string_lossy(), |c| {
+        c.is_control() || matches!(c, ' ' | '%' | '#' | '?')
+    }));
     if let Some(fragment) = fragment {
         out.push('#');
-        out.push_str(fragment);
+        out.push_str(&encode(fragment, |c| c.is_control()));
     }
     out
+}
+
+/// `text` with the characters `escape` picks written as `%XX` per UTF-8 byte.
+fn encode(text: &str, escape: impl Fn(char) -> bool) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if escape(c) {
+            let mut buf = [0; 4];
+            for b in c.encode_utf8(&mut buf).bytes() {
+                let _ = write!(out, "%{b:02X}");
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// `%XX` escapes decoded; malformed ones and invalid UTF-8 are kept as text.
+pub fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = bytes
+            .get(i + 1..i + 3)
+            .and_then(|h| std::str::from_utf8(h).ok())
+            .and_then(|h| u8::from_str_radix(h, 16).ok());
+        match (bytes[i], hex) {
+            (b'%', Some(b)) => {
+                out.push(b);
+                i += 3;
+            }
+            (b, _) => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// `scheme:` per RFC 3986: a letter, then letters, digits, `+`, `-`, `.`.
@@ -81,6 +127,27 @@ mod tests {
         let base = Path::new("/docs");
         assert_eq!(resolve(base, "README.md"), "file:///docs/README.md");
         assert_eq!(resolve(base, "a b.md#x"), "file:///docs/a%20b.md#x");
+    }
+
+    #[test]
+    fn resolve_should_round_trip_escaped_paths() {
+        let url = resolve(Path::new("/docs"), "100%25%20done.md");
+        assert_eq!(url, "file:///docs/100%25%20done.md");
+        assert_eq!(percent_decode(&url), "file:///docs/100% done.md");
+    }
+
+    #[test]
+    fn resolve_should_encode_control_characters() {
+        assert_eq!(
+            resolve(Path::new("/"), "https://a\x1b]0;x\x07"),
+            "https://a%1B]0;x%07"
+        );
+    }
+
+    #[test]
+    fn percent_decode_should_keep_malformed_escapes() {
+        assert_eq!(percent_decode("a%2"), "a%2");
+        assert_eq!(percent_decode("%zz%41"), "%zzA");
     }
 
     #[test]

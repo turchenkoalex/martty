@@ -73,6 +73,10 @@ pub(super) fn highlight(lang: &str, text: &str) -> Option<Vec<Vec<Span>>> {
     if lang.is_empty() {
         return None;
     }
+    crate::panics::catch(|| spans(lang, text))
+}
+
+fn spans(lang: &str, text: &str) -> Option<Vec<Vec<Span>>> {
     let set = syntaxes();
     let syntax = set.find_syntax_by_token(alias(lang))?;
     let mut state = ParseState::new(syntax);

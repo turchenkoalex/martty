@@ -16,3 +16,5 @@ HTML: line<br>break, <kbd>Ctrl</kbd>+<kbd>C</kbd>, H<sub>2</sub>O, x<sup>2</sup>
 Hidden details.
 
 </details>
+
+Escapes stay visible: &#27;]0;title&#7; and `[31mcode`.

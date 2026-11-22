@@ -4,6 +4,7 @@
 
 use resvg::{tiny_skia, usvg};
 
+use crate::panics;
 use crate::picture::svg;
 use crate::term::Rgb;
 
@@ -32,6 +33,16 @@ pub struct Raster {
 /// A display formula (`$$…$$`): TeX display style, at the terminal's text
 /// size, as many rows as it needs. `None` when latex-rust can't render it.
 pub fn display(latex: &str, color: Rgb, cell: (u32, u32)) -> Option<Raster> {
+    panics::catch(|| display_raster(latex, color, cell))
+}
+
+/// An inline formula (`$…$`) in one row, its baseline on the text's.
+/// `None` when it can't be rendered or would be too small to read.
+pub fn inline(latex: &str, color: Rgb, cell: (u32, u32)) -> Option<Raster> {
+    panics::catch(|| inline_raster(latex, color, cell))
+}
+
+fn display_raster(latex: &str, color: Rgb, cell: (u32, u32)) -> Option<Raster> {
     let svg = to_svg(latex, color, true)?;
     let (cw, ch) = (cell.0.max(1) as f32, cell.1.max(1) as f32);
     let scale = px_per_pt(ch);
@@ -43,9 +54,7 @@ pub fn display(latex: &str, color: Rgb, cell: (u32, u32)) -> Option<Raster> {
     rasterize(&svg, cell, (cols, rows), scale, (dx, dy))
 }
 
-/// An inline formula (`$…$`) in one row, its baseline on the text's.
-/// `None` when it can't be rendered or would be too small to read.
-pub fn inline(latex: &str, color: Rgb, cell: (u32, u32)) -> Option<Raster> {
+fn inline_raster(latex: &str, color: Rgb, cell: (u32, u32)) -> Option<Raster> {
     let svg = to_svg(latex, color, false)?;
     let (cw, ch) = (cell.0.max(1) as f32, cell.1.max(1) as f32);
     let natural = px_per_pt(ch);

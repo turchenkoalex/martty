@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
 use crate::kitty::Transmit;
+use crate::panics;
 
 /// Makes an image's upload; `None` when it can't be drawn after all (its
 /// rows then stay empty).
@@ -22,13 +23,16 @@ pub struct Upload {
     pub job: Job,
 }
 
-/// The uploads of `jobs` in order, each as kitty commands for its id.
+/// The uploads of `jobs` in order, each as kitty commands for its id. A job
+/// that panics (a decoder choking on a broken file) uploads nothing.
 pub fn run(jobs: Vec<(u32, Job)>) -> String {
     let threads = thread::available_parallelism()
         .map_or(1, usize::from)
         .min(jobs.len());
     let results: Vec<(u32, Option<Arc<Transmit>>)> = if threads <= 1 {
-        jobs.into_iter().map(|(id, job)| (id, job())).collect()
+        jobs.into_iter()
+            .map(|(id, job)| (id, panics::catch(job)))
+            .collect()
     } else {
         let ids: Vec<u32> = jobs.iter().map(|(id, _)| *id).collect();
         let jobs: Vec<Mutex<Option<Job>>> = jobs
@@ -46,7 +50,7 @@ pub fn run(jobs: Vec<(u32, Job)>) -> String {
                         let Some(slot) = jobs.get(i) else { break };
                         let job = slot.lock().ok().and_then(|mut j| j.take());
                         if let (Some(job), Ok(mut out)) = (job, done[i].lock()) {
-                            *out = job();
+                            *out = panics::catch(job);
                         }
                     }
                 });
@@ -86,6 +90,13 @@ mod tests {
             ids,
             ["i=1", "i=2", "i=3", "i=4", "i=5", "i=6", "i=7", "i=8"]
         );
+    }
+
+    #[test]
+    fn run_should_survive_panicking_jobs() {
+        let broken: Job = Box::new(|| panic!("broken image"));
+        let out = run(vec![(1, broken), (2, job(2))]);
+        assert!(out.starts_with("\x1b_Gi=2,"), "{out:?}");
     }
 
     #[test]

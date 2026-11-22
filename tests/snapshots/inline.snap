@@ -15,3 +15,5 @@ break,  Ctrl + C , H₂O, x², bold, italic, marked, anchor.
 ▾ Summary
 
 Hidden details.
+
+Escapes stay visible: ␛]0;title␇ and ␛[31mcode.

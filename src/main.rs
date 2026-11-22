@@ -18,6 +18,7 @@ mod kitty;
 mod math;
 mod mermaid;
 mod pager;
+mod panics;
 mod picture;
 mod progress;
 mod remote;
@@ -57,7 +58,14 @@ struct Args {
 }
 
 fn main() -> ExitCode {
-    match run() {
+    panics::install();
+    // Unwound out of the pager, a panic has restored the terminal; its
+    // message was kept until now.
+    let result = std::panic::catch_unwind(run).unwrap_or_else(|_| {
+        let message = panics::take_deferred().unwrap_or_else(|| "internal error".into());
+        Err(io::Error::other(message))
+    });
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
         Err(e) => {
@@ -116,9 +124,7 @@ fn run() -> io::Result<()> {
             size.cols = width;
         }
         let first_id = next_id;
-        // Fresh ids per layout, so a re-render never reuses live images.
-        next_id = next_id.wrapping_add(0x1000);
-        match layout {
+        let doc = match layout {
             Layout::Document => {
                 let mut config = config(&caps, &theme, size, &base_dir, first_id, zoom, false);
                 config.color = color;
@@ -126,7 +132,7 @@ fn run() -> io::Result<()> {
                 // Read again on every layout, so following picks up edits;
                 // a file that can't be read right now (mid-save) keeps the
                 // text read before.
-                if let Some(text) = file.and_then(|f| std::fs::read_to_string(f).ok()) {
+                if let Some(text) = file.and_then(|f| read_text(f).ok()) {
                     markdown = text;
                 }
                 render::render(&markdown, &config)
@@ -134,7 +140,7 @@ fn run() -> io::Result<()> {
             Layout::File(path) => {
                 // A link may point at a file that can't be read; say so in
                 // the view instead of failing the pager.
-                let markdown = std::fs::read_to_string(path).unwrap_or_else(|e| {
+                let markdown = read_text(path).unwrap_or_else(|e| {
                     format!("> [!CAUTION]\n> Can't read `{}`: {e}\n", path.display())
                 });
                 let dir = path.parent().unwrap_or(Path::new("."));
@@ -146,12 +152,20 @@ fn run() -> io::Result<()> {
             Layout::Diagram(source) => {
                 let mut config = config(&caps, &theme, size, &base_dir, first_id, zoom, true);
                 config.color = color;
-                render::render(&format!("```mermaid\n{source}\n```\n"), &config)
+                render::render(&mermaid_block(source), &config)
             }
-        }
+        };
+        // Ids are never reused while martty runs, so a layout's images can't
+        // replace those of a view still shown.
+        let used = u32::try_from(doc.image_ids.len()).unwrap_or(u32::MAX);
+        next_id = next_id.wrapping_add(used);
+        doc
     };
 
     let size = term::size();
+    // Taken before the file is read for layout, so an edit saved meanwhile
+    // still counts as a change when following.
+    let modified = file.and_then(|f| std::fs::metadata(f).and_then(|m| m.modified()).ok());
     let params = Params {
         size,
         zoom: 1.0,
@@ -172,6 +186,7 @@ fn run() -> io::Result<()> {
             file,
             follow: args.follow,
             theme: caps.theme,
+            modified,
         };
         return pager::run(&options, doc, &pending_input, render);
     }
@@ -249,16 +264,16 @@ fn parse_width(value: Option<&str>) -> io::Result<usize> {
 fn read_input(file: Option<&Path>) -> io::Result<(String, PathBuf)> {
     match file {
         Some(path) if path != Path::new("-") => {
-            let text = std::fs::read_to_string(path).map_err(|e| with_path(e, path))?;
+            let text = read_text(path).map_err(|e| with_path(e, path))?;
             let dir = path
                 .parent()
                 .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
             Ok((text, dir))
         }
         _ => {
-            let mut buf = String::new();
-            io::stdin().read_to_string(&mut buf)?;
-            Ok((buf, PathBuf::from(".")))
+            let mut buf = Vec::new();
+            io::stdin().read_to_end(&mut buf)?;
+            Ok((lossy(buf), PathBuf::from(".")))
         }
     }
 }
@@ -345,6 +360,24 @@ fn image_id_seed() -> u32 {
     ((std::process::id().wrapping_mul(2_654_435_761) ^ nanos) & 0x00FF_FFFF).max(1)
 }
 
+/// A text file, with invalid UTF-8 (a Latin-1 file) shown as `�` rather
+/// than refused.
+fn read_text(path: &Path) -> io::Result<String> {
+    std::fs::read(path).map(lossy)
+}
+
+fn lossy(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+}
+
+/// `source` as a fenced mermaid block, the fence longer than any run of
+/// backticks inside it.
+fn mermaid_block(source: &str) -> String {
+    let longest = source.split(|c| c != '`').map(str::len).max().unwrap_or(0);
+    let fence = "`".repeat(longest.max(2) + 1);
+    format!("{fence}mermaid\n{source}\n{fence}\n")
+}
+
 fn with_path(e: io::Error, path: &Path) -> io::Error {
     io::Error::new(e.kind(), format!("{}: {e}", path.display()))
 }
@@ -360,5 +393,24 @@ fn contrast(bg: Rgb) -> Rgb {
         (255, 255, 255)
     } else {
         (0, 0, 0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mermaid_block_should_outfence_backticks_in_the_source() {
+        assert_eq!(mermaid_block("A"), "```mermaid\nA\n```\n");
+        assert_eq!(
+            mermaid_block("A[\"```\"]"),
+            "````mermaid\nA[\"```\"]\n````\n"
+        );
+    }
+
+    #[test]
+    fn lossy_should_keep_latin1_text_readable() {
+        assert_eq!(lossy(b"caf\xe9".to_vec()), "caf\u{fffd}");
     }
 }

@@ -34,8 +34,15 @@ impl Pager<'_> {
     }
 
     pub(super) fn zoom_by(&mut self, factor: f32) -> Action {
+        let zoom = self.view().zoom * factor;
+        self.zoom_to(zoom)
+    }
+
+    /// Exactly `zoom`, clamped: `0` must give 1.0 itself, since cached
+    /// images are keyed by the zoom's bits.
+    pub(super) fn zoom_to(&mut self, zoom: f32) -> Action {
         let view = self.view_mut();
-        let zoom = (view.zoom * factor).clamp(ZOOM_RANGE.0, ZOOM_RANGE.1);
+        let zoom = zoom.clamp(ZOOM_RANGE.0, ZOOM_RANGE.1);
         if (zoom - view.zoom).abs() < f32::EPSILON {
             return Action::Continue;
         }
@@ -85,10 +92,7 @@ impl Pager<'_> {
             Key::Char('q' | 'Q') | Key::Ctrl(3) => Action::Quit,
             Key::Char('+' | '=') => self.zoom_by(ZOOM_STEP),
             Key::Char('-' | '_') => self.zoom_by(1.0 / ZOOM_STEP),
-            Key::Char('0') => {
-                let zoom = self.view().zoom;
-                self.zoom_by(1.0 / zoom)
-            }
+            Key::Char('0') => self.zoom_to(1.0),
             Key::Char('o') if !fullscreen => match self.visible_diagram() {
                 Some(index) => Action::Open(index),
                 None => {

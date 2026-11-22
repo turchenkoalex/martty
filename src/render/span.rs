@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt::Write as _;
 
 use unicode_width::UnicodeWidthStr;
@@ -11,16 +12,42 @@ pub(super) struct Span {
 }
 
 impl Span {
+    /// Control characters in `text` are shown as symbols (`␛`), so a
+    /// document can't send the terminal escape sequences of its own: set
+    /// the clipboard (OSC 52), retitle the window, fake a link. Newlines and
+    /// tabs stay for wrapping to handle.
     pub(super) fn new(text: impl Into<String>, style: Style) -> Self {
-        Self {
-            text: text.into(),
-            style,
-        }
+        let text = text.into();
+        let text = match visible_controls(&text, true) {
+            Cow::Borrowed(_) => text,
+            Cow::Owned(shown) => shown,
+        };
+        Self { text, style }
     }
 
     pub(super) fn width(&self) -> usize {
         self.text.width()
     }
+}
+
+/// `text` with control characters replaced by visible ones: C0 by their
+/// Control Pictures (`␛` for ESC), DEL by `␡`, C1 by `�`. `keep_breaks`
+/// leaves newlines and tabs alone.
+pub fn visible_controls(text: &str, keep_breaks: bool) -> Cow<'_, str> {
+    let hidden = |c: char| c.is_control() && !(keep_breaks && matches!(c, '\n' | '\t'));
+    if !text.contains(hidden) {
+        return Cow::Borrowed(text);
+    }
+    let shown = text
+        .chars()
+        .map(|c| match c {
+            _ if !hidden(c) => c,
+            '\0'..='\x1f' => char::from_u32(0x2400 + u32::from(c)).unwrap_or('\u{fffd}'),
+            '\x7f' => '\u{2421}',
+            _ => '\u{fffd}',
+        })
+        .collect();
+    Cow::Owned(shown)
 }
 
 pub(super) fn spans_width(spans: &[Span]) -> usize {
@@ -80,5 +107,22 @@ impl Pen {
             out.push_str("\x1b[0m");
         }
         self.current = Style::default();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn span_should_show_control_characters() {
+        let span = Span::new("a\x1b]52;c;eA==\x07b\x7f\u{9b}\n", Style::default());
+        assert_eq!(span.text, "a\u{241b}]52;c;eA==\u{2407}b\u{2421}\u{fffd}\n");
+    }
+
+    #[test]
+    fn visible_controls_should_borrow_plain_text() {
+        assert!(matches!(visible_controls("plain", false), Cow::Borrowed(_)));
+        assert_eq!(visible_controls("a\nb", false), "a\u{240a}b");
     }
 }

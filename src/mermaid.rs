@@ -13,6 +13,7 @@ use resvg::{tiny_skia, usvg};
 
 use crate::cache::{self, Lru};
 use crate::kitty::{self, Transmit};
+use crate::panics;
 use crate::picture::svg;
 use crate::term::Rgb;
 use merman_svg::to_svg;
@@ -142,15 +143,18 @@ fn tree(source: &str, palette: &Palette) -> Tree {
     if let Some(tree) = cache.lock().ok().and_then(|mut c| c.get(key)) {
         return tree;
     }
-    let tree = to_svg(source, palette).and_then(|svg| {
-        let options = usvg::Options {
-            fontdb: fonts_for(source),
-            ..usvg::Options::default()
-        };
-        usvg::Tree::from_str(&svg, &options)
-            .map(Arc::new)
-            .map_err(|e| e.to_string())
-    });
+    let tree = panics::catch(|| {
+        Some(to_svg(source, palette).and_then(|svg| {
+            let options = usvg::Options {
+                fontdb: fonts_for(source),
+                ..usvg::Options::default()
+            };
+            usvg::Tree::from_str(&svg, &options)
+                .map(Arc::new)
+                .map_err(|e| e.to_string())
+        }))
+    })
+    .unwrap_or_else(|| Err("the diagram renderer crashed on this diagram".to_owned()));
     if let Ok(mut c) = cache.lock() {
         c.insert(key, tree.clone(), 1);
     }

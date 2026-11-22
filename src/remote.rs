@@ -54,10 +54,17 @@ fn is_public(ip: IpAddr) -> bool {
                 return is_public_v4(v4);
             }
             let s = v6.segments();
-            // NAT64 (64:ff9b::/96) carries an IPv4 address in its low bits.
-            if s[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
-                let [.., a, b, c, d] = v6.octets();
+            let [.., a, b, c, d] = v6.octets();
+            // NAT64 (64:ff9b::/96) and the deprecated IPv4-compatible form
+            // (::/96, which also covers :: and ::1) carry an IPv4 address in
+            // their low bits.
+            if s[..6] == [0x64, 0xff9b, 0, 0, 0, 0] || s[..6] == [0; 6] {
                 return is_public_v4(Ipv4Addr::new(a, b, c, d));
+            }
+            // 6to4 (2002::/16) and Teredo (2001::/32) tunnel to IPv4 hosts
+            // that the address doesn't plainly show; nothing needs them.
+            if s[0] == 0x2002 || (s[0] == 0x2001 && s[1] == 0) {
+                return false;
             }
             !(v6.is_loopback()
                 || v6.is_unspecified()
@@ -138,11 +145,15 @@ mod net {
     const MAX_BYTES: u64 = 16 << 20;
     /// Everything downloaded in one run.
     const MAX_TOTAL: u64 = 64 << 20;
+    /// Reserved for a response without `Content-Length`: a share of the
+    /// budget that every parallel download can have at once.
+    const UNSIZED: u64 = MAX_TOTAL / PARALLEL as u64;
     const TIMEOUT: Duration = Duration::from_secs(10);
     const FRESH: Duration = Duration::from_secs(24 * 60 * 60);
     const PARALLEL: usize = 8;
 
-    type Memo = Mutex<HashMap<String, Option<Arc<Vec<u8>>>>>;
+    type Data = Arc<Vec<u8>>;
+    type Memo = Mutex<HashMap<String, Option<Data>>>;
 
     /// Bytes downloaded or reserved for downloads in flight.
     static DOWNLOADED: AtomicU64 = AtomicU64::new(0);
@@ -158,23 +169,24 @@ mod net {
         enabled() && is_https(url)
     }
 
-    pub fn fetch(url: &str) -> Option<Vec<u8>> {
+    pub fn fetch(url: &str) -> Option<Data> {
         if !wanted(url) {
             return None;
         }
-        let mut memo = memo().lock().ok()?;
-        let data = match memo.get(url) {
+        let memo = memo().lock().ok()?;
+        match memo.get(url) {
             Some(data) => data.clone(),
-            None if memo.len() >= MAX_IMAGES => return None,
+            None if memo.len() >= MAX_IMAGES => None,
             None => {
                 drop(memo);
                 let data = load(url).map(Arc::new);
-                memo = self::memo().lock().ok()?;
-                memo.insert(url.to_owned(), data.clone());
+                self::memo()
+                    .lock()
+                    .ok()?
+                    .insert(url.to_owned(), data.clone());
                 data
             }
-        };
-        data.map(|d| d.as_ref().clone())
+        }
     }
 
     /// Fetches the URLs not seen yet, several at a time, in document order
@@ -272,29 +284,34 @@ mod net {
         })
     }
 
-    /// Downloads within what is left of the run's budget: the share is
-    /// reserved first, so parallel downloads can't overrun it together,
-    /// and the unused part is given back.
+    /// Downloads within what is left of the run's budget. The body's share
+    /// is reserved once the headers tell its size (or `UNSIZED` without
+    /// one), so parallel downloads can't overrun the budget together, nor
+    /// starve each other by reserving more than they need; the unused part
+    /// is given back.
     fn download(url: &str) -> Option<Vec<u8>> {
-        let reserved = reserve(MAX_BYTES)?;
-        let data = (|| {
-            let mut response = agent().get(url).call().ok()?;
-            let headers = response.headers();
-            let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
-            if !may_be_image(header("content-type")) {
-                return None;
-            }
-            let length = header("content-length").and_then(|v| v.trim().parse::<u64>().ok());
-            if length.is_some_and(|n| n > reserved) {
-                return None;
-            }
+        let mut response = agent().get(url).call().ok()?;
+        let headers = response.headers();
+        let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+        if !may_be_image(header("content-type")) {
+            return None;
+        }
+        let length = header("content-length").and_then(|v| v.trim().parse::<u64>().ok());
+        if length.is_some_and(|n| n > MAX_BYTES) {
+            return None;
+        }
+        let want = length.unwrap_or(UNSIZED);
+        let reserved = reserve(want)?;
+        let data = if reserved < want {
+            None
+        } else {
             response
                 .body_mut()
                 .with_config()
                 .limit(reserved)
                 .read_to_vec()
                 .ok()
-        })();
+        };
         let used = data.as_ref().map_or(0, |d| d.len() as u64);
         DOWNLOADED.fetch_sub(reserved - used.min(reserved), Ordering::Relaxed);
         data
@@ -378,8 +395,12 @@ mod net {
             assert_ne!(cache_path("https://a/1.png"), cache_path("https://a/2.png"));
         }
 
+        // One test: both use the process-wide budget.
         #[test]
-        fn reserve_should_stop_at_the_run_budget() {
+        fn reserve_should_share_the_run_budget() {
+            DOWNLOADED.store(0, Ordering::Relaxed);
+            let parallel: Vec<_> = (0..PARALLEL).map(|_| reserve(UNSIZED)).collect();
+            assert!(parallel.iter().all(Option::is_some), "{parallel:?}");
             DOWNLOADED.store(MAX_TOTAL - 10, Ordering::Relaxed);
             assert_eq!(reserve(MAX_BYTES), Some(10));
             assert_eq!(reserve(MAX_BYTES), None);
@@ -421,6 +442,9 @@ mod tests {
             "fd00::1",
             "::ffff:192.168.1.1",
             "64:ff9b::a00:1",
+            "::7f00:1",
+            "2002:7f00:1::",
+            "2001:0:4136:e378::1",
         ];
         for ip in refused {
             let ip: IpAddr = ip.parse().unwrap_or_else(|e| panic!("{ip}: {e}"));

@@ -48,9 +48,9 @@ use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::render::Document;
+use crate::render::{self, Document};
 use crate::term::{self, RawMode, Size, Theme};
-use crate::{kitty, progress};
+use crate::{kitty, panics, progress};
 
 use keys::read_keys;
 use overlay::Overlay;
@@ -88,6 +88,8 @@ pub struct Options<'a> {
     pub follow: bool,
     /// The colors probed at start.
     pub theme: Theme,
+    /// Modification time of `file` before it was read for `doc`.
+    pub modified: Option<SystemTime>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -130,10 +132,12 @@ pub fn run(
     pager.file = options.file.map(Path::to_path_buf);
     pager.follow = options.follow && pager.file.is_some();
     pager.theme = options.theme;
-    pager.views[0].modified = pager.file.as_deref().and_then(modified);
+    pager.views[0].modified = options.modified;
     pager.enter()?;
 
     let mut keys = keys::parse_keys(pending);
+    // The start of a key sequence the last read cut in two.
+    let mut carry = Vec::new();
     // Frames are drawn only after input or a resize, not on every wake-up.
     let mut dirty = true;
     loop {
@@ -162,7 +166,7 @@ pub fn run(
             pager.redraw()?;
             dirty = false;
         }
-        keys = match read_keys(&mut tty)? {
+        keys = match read_keys(&mut tty, &mut carry)? {
             Some(keys) => keys,
             None => {
                 let size = term::size();
@@ -238,6 +242,7 @@ impl<'a> Pager<'a> {
 
     fn enter(&mut self) -> io::Result<()> {
         self.active = true;
+        panics::set_alternate_screen(true);
         let mut out = ENTER.to_owned();
         out.push_str(&self.views[0].doc.preamble);
         write_out(&out)
@@ -411,25 +416,26 @@ impl<'a> Pager<'a> {
             return Ok(());
         }
         let Some(local) = url.strip_prefix("file://") else {
-            self.message = Some(links::open_external(url.as_ref()));
+            self.message = Some(links::open_url(url));
             return Ok(());
         };
         let (path, fragment) = match local.split_once('#') {
             Some((path, fragment)) => (path, Some(fragment)),
             None => (local, None),
         };
-        let path = PathBuf::from(path.replace("%20", " "));
+        let path = PathBuf::from(render::percent_decode(path));
         if !links::is_markdown(&path) {
-            self.message = Some(links::open_external(path.as_os_str()));
+            self.message = Some(links::open_file(&path));
             return Ok(());
         }
         if !path.is_file() {
             self.message = Some(format!("No such file: {}", path.display()));
             return Ok(());
         }
+        let time = modified(&path);
         let doc = render(Layout::File(&path), self.params(1.0));
         let mut view = View::new(doc, Kind::File(path.clone()));
-        view.modified = modified(&path);
+        view.modified = time;
         self.push(view)?;
         if let Some(anchor) = fragment {
             self.jump_to(anchor);
@@ -453,7 +459,8 @@ impl<'a> Pager<'a> {
     ) -> io::Result<()> {
         let rows = self.view_rows();
         let params = self.params(self.views[depth].zoom);
-        let path = self.path(depth).map(Path::to_path_buf);
+        // Before the file is read, so a save during the layout is seen.
+        let time = self.path(depth).and_then(modified);
         let old = &self.views[depth];
         let doc = match &old.kind {
             Kind::Document => render(Layout::Document, params),
@@ -477,7 +484,7 @@ impl<'a> Pager<'a> {
             .map(|(&c, &line)| (c, view.follow_line(old, line)))
             .collect();
         view.current_hit = old.current_hit.map(|line| view.follow_line(old, line));
-        view.modified = path.as_deref().and_then(modified);
+        view.modified = time;
         self.views[depth] = view;
         Ok(())
     }
@@ -495,6 +502,7 @@ impl Drop for Pager<'_> {
         }
         out.push_str(LEAVE);
         let _ = write_out(&out);
+        panics::set_alternate_screen(false);
     }
 }
 

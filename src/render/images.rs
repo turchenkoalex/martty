@@ -10,7 +10,7 @@ use super::{ImageRow, Renderer};
 use crate::cache;
 use crate::kitty::{self, Transmit};
 use crate::mermaid;
-use crate::picture::Picture;
+use crate::picture::{self, Picture};
 use crate::style::{Color, Style};
 
 pub(super) struct PendingImage {
@@ -202,7 +202,7 @@ fn load(base: &Path, url: &str) -> Option<(Picture, u64)> {
     let path = resolve(base, url)?;
     let meta = std::fs::metadata(&path).ok()?;
     let source = cache::key((&path, meta.len(), meta.modified().ok()));
-    Some((Picture::new(std::fs::read(&path).ok()?, &path)?, source))
+    Some((Picture::new(picture::read_file(&path)?, &path)?, source))
 }
 
 /// Local path for an image URL; remote URLs give `None`.
@@ -211,7 +211,7 @@ pub(super) fn resolve(base: &Path, url: &str) -> Option<PathBuf> {
     if url.contains("://") || url.starts_with("data:") {
         return None;
     }
-    let path = PathBuf::from(url.replace("%20", " "));
+    let path = PathBuf::from(super::links::percent_decode(url));
     Some(if path.is_absolute() {
         path
     } else {
