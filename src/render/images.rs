@@ -122,12 +122,12 @@ impl Renderer<'_> {
         id
     }
 
-    /// Lays a mermaid block out as an image. On a parse error prints it and
-    /// returns `false`, so the source is shown as a regular code block.
-    pub(super) fn diagram(&mut self, source: &str) -> bool {
+    /// Lays a mermaid block out as an image. `Ok(false)` when diagrams are
+    /// off; on a parse error its first line, for the block shown as code.
+    pub(super) fn diagram(&mut self, source: &str) -> Result<bool, String> {
         let cfg = self.cfg;
         let Some(d) = &cfg.diagrams else {
-            return false;
+            return Ok(false);
         };
         let view = (u32::try_from(self.avail()).unwrap_or(u32::MAX), d.max_rows);
         match mermaid::layout(source, &d.palette, d.cell, view, d.zoom, d.max_upscale) {
@@ -147,13 +147,9 @@ impl Renderer<'_> {
                 let job = Box::new(move || cache::transmit(key, || diagram.transmit()));
                 let id = self.place(cols, rows, indent, job);
                 self.diagrams.push((id, source.to_owned()));
-                true
+                Ok(true)
             }
-            Err(e) => {
-                let msg = format!("mermaid: {}", e.lines().next().unwrap_or_default());
-                self.emit_line(&[Span::new(msg, Style::fg(Color::Ansi(1)))]);
-                false
-            }
+            Err(e) => Err(e.lines().next().unwrap_or_default().to_owned()),
         }
     }
 

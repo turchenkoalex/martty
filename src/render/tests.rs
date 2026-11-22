@@ -287,8 +287,8 @@ fn render_should_highlight_marked_text_only_in_pairs() {
     assert!(out.contains("a \x1b[38;5;0;48;5;3mb\x1b[0m c"), "{out:?}");
 }
 
-fn diagram_indent(center: bool) -> Option<usize> {
-    let cfg = Config {
+fn diagrams_config(center: bool) -> Config {
+    Config {
         width: 200,
         color: true,
         diagrams: Some(Diagrams {
@@ -306,7 +306,11 @@ fn diagram_indent(center: bool) -> Option<usize> {
             center,
         }),
         ..images_config()
-    };
+    }
+}
+
+fn diagram_indent(center: bool) -> Option<usize> {
+    let cfg = diagrams_config(center);
     let doc = super::render("```mermaid\nflowchart LR\n  A --> B\n```", &cfg);
     let row = doc.lines.iter().find_map(|l| l.image)?;
     assert!(row.cols < 200, "a small diagram should not fill the width");
@@ -589,4 +593,22 @@ fn render_should_wrap_images_that_do_not_fit_one_row() {
     };
     let doc = super::render("![a](a.svg) ![b](b.svg)", &cfg);
     assert_eq!(doc.lines.len(), 2);
+}
+
+#[test]
+fn render_should_name_mermaid_error_in_the_panel_label() {
+    let cfg = Config {
+        width: 60,
+        code_bg: Some(Color::Ansi(0)),
+        ..diagrams_config(false)
+    };
+    let out = strip_ansi(&render("```mermaid\nnot a diagram\n```", &cfg));
+    let first = out.lines().next().unwrap_or_default();
+    assert!(first.trim_start().starts_with("invalid mermaid"), "{out}");
+    assert!(
+        out.lines()
+            .nth(1)
+            .is_some_and(|l| l.contains("not a diagram")),
+        "{out}"
+    );
 }

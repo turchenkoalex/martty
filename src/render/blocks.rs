@@ -97,8 +97,13 @@ impl Renderer<'_> {
     }
 
     fn code_lines(&mut self, code: &CodeBlock, text: &str) {
-        if code.lang == "mermaid" && self.diagram(&code.text) {
-            return;
+        let mut error = None;
+        if code.lang == "mermaid" {
+            match self.diagram(&code.text) {
+                Ok(true) => return,
+                Ok(false) => {}
+                Err(e) => error = Some(e),
+            }
         }
         if code.lang == "math" && self.math_block(&code.text) {
             return;
@@ -123,6 +128,10 @@ impl Renderer<'_> {
         // Without a panel there is no free row for the language label, and
         // it isn't worth a line of its own.
         let Some(bg) = self.cfg.code_bg else {
+            if let Some(e) = &error {
+                let msg = format!("invalid mermaid: {e}");
+                self.emit_line(&[Span::new(msg, Style::fg(Color::Ansi(1)))]);
+            }
             let bar = Span::new("│ ", Style::fg(Color::Ansi(8)));
             for chunk in chunks {
                 let mut line = vec![bar.clone()];
@@ -136,16 +145,36 @@ impl Renderer<'_> {
             bg: Some(bg),
             ..Style::default()
         };
-        // The panel's top padding row carries the language, right-aligned.
-        let label = Style {
-            dim: true,
-            italic: true,
-            ..base.clone()
+        // The panel's top padding row carries the language, right-aligned,
+        // or why a diagram couldn't be drawn, in red.
+        let (text, label) = match &error {
+            Some(e) => {
+                let full = format!("invalid mermaid: {e}");
+                let text = if full.width() + 2 <= avail {
+                    full
+                } else {
+                    "invalid mermaid".to_owned()
+                };
+                let style = Style {
+                    italic: true,
+                    fg: Some(Color::Ansi(1)),
+                    ..base.clone()
+                };
+                (text, style)
+            }
+            None => {
+                let style = Style {
+                    dim: true,
+                    italic: true,
+                    ..base.clone()
+                };
+                (code.lang.clone(), style)
+            }
         };
-        let pad = avail.saturating_sub(code.lang.width() + 1);
+        let pad = avail.saturating_sub(text.width() + 1);
         self.emit_wide_line(&[
             Span::new(" ".repeat(pad), base.clone()),
-            Span::new(code.lang.as_str(), label),
+            Span::new(text, label),
             Span::new(" ", base.clone()),
         ]);
         for mut chunk in chunks {
