@@ -26,6 +26,9 @@ pub(super) enum Key {
     BackTab,
     Backspace,
     Esc,
+    /// Ghostty switched between its light and dark theme (DEC 2031
+    /// notification `CSI ? 997 ; 1|2 n`): not a key, but it arrives with them.
+    ThemeChanged,
 }
 
 /// Waits up to `POLL` for input. `None` on timeout.
@@ -55,20 +58,10 @@ pub(super) fn parse_keys(buf: &[u8]) -> Vec<Key> {
                     let params = &buf[start..start + len];
                     let fin = buf.get(start + len).copied();
                     i = (start + len + 1).min(buf.len());
-                    match (fin, params) {
-                        (Some(b'A'), _) => Key::Up,
-                        (Some(b'B'), _) => Key::Down,
-                        (Some(b'C'), _) => Key::Right,
-                        (Some(b'D'), _) => Key::Left,
-                        (Some(b'H'), _) => Key::Home,
-                        (Some(b'F'), _) => Key::End,
-                        (Some(b'Z'), _) => Key::BackTab,
-                        (Some(b'~'), b"5") => Key::PageUp,
-                        (Some(b'~'), b"6") => Key::PageDown,
-                        (Some(b'~'), b"1" | b"7") => Key::Home,
-                        (Some(b'~'), b"4" | b"8") => Key::End,
-                        _ => continue,
-                    }
+                    let Some(key) = csi_key(fin, params) else {
+                        continue;
+                    };
+                    key
                 }
                 _ => Key::Esc,
             },
@@ -99,6 +92,57 @@ pub(super) fn parse_keys(buf: &[u8]) -> Vec<Key> {
     keys
 }
 
+/// The key a CSI (or SS3) sequence stands for. Modifiers after `;` are
+/// dropped from legacy keys (`CSI 1;5A` is Up), so Ctrl-arrows act as arrows.
+fn csi_key(fin: Option<u8>, params: &[u8]) -> Option<Key> {
+    let first = params.split(|&b| b == b';').next().unwrap_or_default();
+    Some(match (fin?, first) {
+        (b'A', _) => Key::Up,
+        (b'B', _) => Key::Down,
+        (b'C', _) => Key::Right,
+        (b'D', _) => Key::Left,
+        (b'H', _) => Key::Home,
+        (b'F', _) => Key::End,
+        (b'Z', _) => Key::BackTab,
+        (b'~', b"5") => Key::PageUp,
+        (b'~', b"6") => Key::PageDown,
+        (b'~', b"1" | b"7") => Key::Home,
+        (b'~', b"4" | b"8") => Key::End,
+        (b'n', b"?997") => Key::ThemeChanged,
+        (b'u', _) => return kitty_key(params),
+        _ => return None,
+    })
+}
+
+/// A key in the kitty keyboard protocol, `CSI code[:alternates] ;
+/// modifiers[:event] u`. With "disambiguate" (flag 1) the pager gets these
+/// only for Esc and for keys with Ctrl or Alt held (or modified Enter, Tab,
+/// Backspace); plain text still comes as text. Ctrl-letters map to the C0
+/// byte the legacy encoding sends; Alt combinations are dropped, where
+/// legacy input reads Alt-x as Esc followed by `x`.
+fn kitty_key(params: &[u8]) -> Option<Key> {
+    let mut fields = params.split(|&b| b == b';');
+    let number = |field: Option<&[u8]>| -> Option<u32> {
+        let digits = field?.split(|&b| b == b':').next()?;
+        std::str::from_utf8(digits).ok()?.parse().ok()
+    };
+    let code = number(fields.next())?;
+    // Modifiers are sent as 1 + bits: shift 1, alt 2, ctrl 4, super 8, and
+    // Caps Lock 64 and Num Lock 128, which don't change the key here.
+    let mods = number(fields.next()).unwrap_or(1).saturating_sub(1) & !(64 | 128);
+    let (shift, alt, ctrl) = (mods & 1 != 0, mods & 2 != 0, mods & 4 != 0);
+    Some(match code {
+        27 => Key::Esc,
+        13 => Key::Enter,
+        9 if shift => Key::BackTab,
+        9 => Key::Tab,
+        127 | 8 => Key::Backspace,
+        _ if alt || mods & !(1 | 4) != 0 => return None,
+        _ if ctrl => Key::Ctrl(u8::try_from(code).ok().filter(u8::is_ascii_alphabetic)? & 0x1f),
+        _ => Key::Char(char::from_u32(code)?),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,6 +156,28 @@ mod tests {
     #[test]
     fn parse_keys_should_read_tab_and_shift_tab() {
         assert_eq!(parse_keys(b"\t\x1b[Z"), [Key::Tab, Key::BackTab]);
+    }
+
+    #[test]
+    fn parse_keys_should_read_kitty_keys() {
+        let keys = parse_keys(b"\x1b[27u\x1b[99;5u\x1b[9;2u\x1b[13;1:1u");
+        assert_eq!(keys, [Key::Esc, Key::Ctrl(3), Key::BackTab, Key::Enter]);
+    }
+
+    #[test]
+    fn parse_keys_should_drop_alt_combinations() {
+        assert_eq!(parse_keys(b"\x1b[120;3uq"), [Key::Char('q')]);
+    }
+
+    #[test]
+    fn parse_keys_should_read_modified_legacy_keys() {
+        assert_eq!(parse_keys(b"\x1b[1;5A\x1b[5;5~"), [Key::Up, Key::PageUp]);
+    }
+
+    #[test]
+    fn parse_keys_should_report_theme_change() {
+        let keys = parse_keys(b"\x1b[?997;1n\x1b[?997;2nj");
+        assert_eq!(keys, [Key::ThemeChanged, Key::ThemeChanged, Key::Char('j')]);
     }
 
     #[test]

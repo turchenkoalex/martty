@@ -1,10 +1,18 @@
 //! Big headings as images. Ghostty has no OSC 66 yet, so we rasterize the
-//! heading ourselves with JetBrains Mono (Ghostty's default font) into a
-//! box of whole cells, so the terminal shows it pixel-for-pixel.
+//! heading ourselves into a box of whole cells, so the terminal shows it
+//! pixel-for-pixel. The font is the bold face of Ghostty's `font-family`
+//! when it is installed, else the bundled JetBrains Mono (Ghostty's default).
+
+use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 
 use fontdue::{Font, FontSettings};
+use resvg::usvg::fontdb;
 
+use crate::picture::svg;
 use crate::term::Rgb;
+
+const BUNDLED_FAMILY: &str = "JetBrains Mono";
 
 pub static FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono-Bold.ttf");
 
@@ -19,10 +27,19 @@ pub struct Bitmap {
 }
 
 impl HeadingFont {
+    /// The font, found and parsed once per process.
     pub fn load() -> Option<Self> {
-        Font::from_bytes(FONT_BYTES, FontSettings::default())
-            .ok()
+        static FONT: OnceLock<Option<Font>> = OnceLock::new();
+        // Tests measure headings in the bundled font, whatever is installed.
+        FONT.get_or_init(|| if cfg!(test) { None } else { configured() }.or_else(bundled))
+            .clone()
             .map(Self)
+    }
+
+    /// Starts finding the font in the background (asking Ghostty for its
+    /// config, maybe loading system fonts), so it overlaps the terminal probe.
+    pub fn prefetch() {
+        std::thread::spawn(Self::load);
     }
 
     /// Whether every visible char has a glyph (no tofu for emoji etc.).
@@ -105,6 +122,63 @@ impl HeadingFont {
     }
 }
 
+fn bundled() -> Option<Font> {
+    Font::from_bytes(FONT_BYTES, FontSettings::default()).ok()
+}
+
+/// The bold face of Ghostty's font, when it isn't the bundled one and the
+/// system has it. Only then are the system fonts loaded, which takes a while.
+fn configured() -> Option<Font> {
+    let family = ghostty_font_family()?;
+    if family.eq_ignore_ascii_case(BUNDLED_FAMILY) {
+        return None;
+    }
+    let db = svg::fonts();
+    let id = db.query(&fontdb::Query {
+        families: &[fontdb::Family::Name(&family)],
+        weight: fontdb::Weight::BOLD,
+        ..fontdb::Query::default()
+    })?;
+    db.with_face_data(id, |data, index| {
+        let settings = FontSettings {
+            collection_index: index,
+            ..FontSettings::default()
+        };
+        Font::from_bytes(data, settings).ok()
+    })?
+}
+
+/// Ghostty's font family from `ghostty +show-config`, the config as Ghostty
+/// resolved it (included files, defaults). Ghostty puts its binary's
+/// directory in `GHOSTTY_BIN_DIR`; outside Ghostty `ghostty` may be on PATH.
+fn ghostty_font_family() -> Option<String> {
+    let bin = std::env::var_os("GHOSTTY_BIN_DIR").map_or_else(
+        || "ghostty".into(),
+        |dir| std::path::Path::new(&dir).join("ghostty"),
+    );
+    let output = Command::new(bin)
+        .arg("+show-config")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    font_family(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// `font-family-bold` if set, else `font-family`; each may repeat for
+/// fallbacks, and the first non-empty one is the primary font.
+fn font_family(config: &str) -> Option<String> {
+    let first = |key: &str| {
+        config.lines().find_map(|line| {
+            let (k, v) = line.split_once('=')?;
+            let v = v.trim().trim_matches('"');
+            (k.trim() == key && !v.is_empty()).then(|| v.to_owned())
+        })
+    };
+    first("font-family-bold").or_else(|| first("font-family"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,6 +204,24 @@ mod tests {
     #[test]
     fn supports_should_accept_cyrillic() {
         assert!(font().supports("Привет мир"));
+    }
+
+    #[test]
+    fn font_family_should_prefer_bold_family() {
+        let config = "font-family = \nfont-family = Iosevka\nfont-family-bold = \"Fira Code\"\n";
+        assert_eq!(font_family(config).as_deref(), Some("Fira Code"));
+    }
+
+    #[test]
+    fn font_family_should_take_first_non_empty_entry() {
+        let config =
+            "font-family = \nfont-family = Iosevka\nfont-family = Symbols\nfont-family-bold = \n";
+        assert_eq!(font_family(config).as_deref(), Some("Iosevka"));
+    }
+
+    #[test]
+    fn font_family_should_be_none_when_unset() {
+        assert_eq!(font_family("font-family = \nfont-size = 13\n"), None);
     }
 
     #[test]

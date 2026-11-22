@@ -4,7 +4,8 @@
 //! - kitty text sizing protocol (OSC 66): print a `w=2` space and check
 //!   via cursor position report whether the cursor moved by two cells;
 //! - foreground/background colors (OSC 10/11) to derive panel colors;
-//! - palette colors 1–6 (OSC 4) so image headings and diagrams match the theme;
+//! - palette colors 1–6 (OSC 4) so image headings and diagrams match the theme
+//!   (asked again by `query_theme` when the theme changes);
 //! - kitty graphics support (`a=q` query) and cell size in pixels (CSI 16 t);
 //! - DA1 as a sentinel, since every terminal answers it.
 
@@ -30,16 +31,23 @@ pub fn mix(a: Rgb, b: Rgb, t: f32) -> Rgb {
     (ch(a.0, b.0), ch(a.1, b.1), ch(a.2, b.2))
 }
 
+/// The terminal's colors, probed at start and again when Ghostty reports a
+/// theme change (DEC 2031).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Theme {
+    pub fg: Option<Rgb>,
+    pub bg: Option<Rgb>,
+    /// Base ANSI palette (only the entries we query are filled).
+    pub palette: [Option<Rgb>; 8],
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Caps {
     pub text_sizing: bool,
-    pub fg: Option<Rgb>,
-    pub bg: Option<Rgb>,
+    pub theme: Theme,
     pub graphics: bool,
     /// Cell size in pixels, `(width, height)`.
     pub cell: Option<(u32, u32)>,
-    /// Base ANSI palette (only the entries we query are filled).
-    pub palette: [Option<Rgb>; 8],
     /// Keys pressed while the probe was reading the tty, for the pager to
     /// handle first instead of losing them.
     pub pending_input: Vec<u8>,
@@ -53,9 +61,21 @@ pub struct Size {
     pub cell: Option<(u32, u32)>,
 }
 
-const QUERY: &[u8] = b"\r\x1b]66;w=2; \x07\x1b[6n\x1b]10;?\x1b\\\x1b]11;?\x1b\\\
-    \x1b]4;1;?\x1b\\\x1b]4;2;?\x1b\\\x1b]4;3;?\x1b\\\x1b]4;4;?\x1b\\\x1b]4;5;?\x1b\\\x1b]4;6;?\x1b\\\
-    \x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[16t\x1b[c";
+/// OSC 10/11 (foreground, background) and OSC 4 for palette entries 1–6.
+macro_rules! color_query {
+    () => {
+        "\x1b]10;?\x1b\\\x1b]11;?\x1b\\\
+         \x1b]4;1;?\x1b\\\x1b]4;2;?\x1b\\\x1b]4;3;?\x1b\\\x1b]4;4;?\x1b\\\x1b]4;5;?\x1b\\\x1b]4;6;?\x1b\\"
+    };
+}
+const QUERY: &[u8] = concat!(
+    "\r\x1b]66;w=2; \x07\x1b[6n",
+    color_query!(),
+    "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[16t\x1b[c"
+)
+.as_bytes();
+/// The colors again, with DA1 as the sentinel.
+const THEME_QUERY: &[u8] = concat!(color_query!(), "\x1b[c").as_bytes();
 const TIMEOUT: Duration = Duration::from_millis(500);
 
 pub fn size() -> Size {
@@ -119,6 +139,15 @@ fn query() -> io::Result<Vec<u8>> {
     Ok(response)
 }
 
+/// Asks the terminal for its colors again, on a tty already in raw mode.
+/// Returns them with the keys typed while waiting for the reply.
+pub fn query_theme(tty: &mut File) -> io::Result<(Theme, Vec<u8>)> {
+    tty.write_all(THEME_QUERY)?;
+    tty.flush()?;
+    let response = read_until_da1(tty)?;
+    Ok((parse_theme(&response), strip_replies(&response)))
+}
+
 fn read_until_da1(tty: &mut File) -> io::Result<Vec<u8>> {
     let deadline = Instant::now() + TIMEOUT;
     let mut buf = Vec::new();
@@ -179,12 +208,18 @@ fn has_da1(buf: &[u8]) -> bool {
 fn parse_response(resp: &[u8]) -> Caps {
     Caps {
         text_sizing: cursor_column(resp) == Some(3),
-        fg: osc_color(resp, b"]10;rgb:"),
-        bg: osc_color(resp, b"]11;rgb:"),
+        theme: parse_theme(resp),
         graphics: find(resp, b"\x1b_Gi=31;OK").is_some(),
         cell: cell_pixels(resp),
-        palette: std::array::from_fn(|i| osc_color(resp, format!("]4;{i};rgb:").as_bytes())),
         pending_input: Vec::new(),
+    }
+}
+
+fn parse_theme(resp: &[u8]) -> Theme {
+    Theme {
+        fg: osc_color(resp, b"]10;rgb:"),
+        bg: osc_color(resp, b"]11;rgb:"),
+        palette: std::array::from_fn(|i| osc_color(resp, format!("]4;{i};rgb:").as_bytes())),
     }
 }
 
@@ -350,7 +385,10 @@ mod tests {
 
     #[test]
     fn parse_should_read_background_color() {
-        assert_eq!(parse_response(GHOSTTY_LIKE).bg, Some((0x28, 0x2c, 0x34)));
+        assert_eq!(
+            parse_response(GHOSTTY_LIKE).theme.bg,
+            Some((0x28, 0x2c, 0x34))
+        );
     }
 
     #[test]
@@ -366,7 +404,7 @@ mod tests {
     #[test]
     fn parse_should_read_palette_entry() {
         assert_eq!(
-            parse_response(GHOSTTY_LIKE).palette[5],
+            parse_response(GHOSTTY_LIKE).theme.palette[5],
             Some((0xc6, 0xa0, 0xf6))
         );
     }

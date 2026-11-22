@@ -54,14 +54,16 @@ src/
 ├── remote.rs      # https images, opt-in per run, fenced in; disk cache
 ├── mermaid.rs     # merman → SVG → resvg → kitty (feature `mermaid`)
 ├── math.rs        # LaTeX → latex-rust SVG → resvg → kitty (feature `math`)
-├── heading.rs     # H1–H3 rasterized with fontdue + bundled JetBrains Mono
+├── heading.rs     # H1–H3 rasterized with fontdue in Ghostty's font or bundled JetBrains Mono
+├── progress.rs    # Ghostty's progress indicator (OSC 9;4) during slow layouts
 └── pager/         # alternate-screen pager
     ├── mod.rs     # `run` loop, view stack, relayout, following files, terminal enter/leave
     ├── view.rs    # one view: document, scroll, pan, zoom, marks; position across relayouts
     ├── search.rs  # matches, their highlight and the counter
     ├── overlay.rs # key help and the table of contents
     ├── copy.rs    # OSC 52 and plain-text copies of code, the screen, the document
-    ├── keys.rs    # reading the tty and keys
+    ├── keys.rs    # reading the tty and keys (legacy and kitty keyboard protocol)
+    ├── theme.rs   # theme switch reported by Ghostty (DEC 2031): colors again, relayout
     ├── links.rs   # links found by OSC 8, Tab selection highlight, opening
     ├── input.rs   # key bindings, scrolling, marks, zoom, pan
     └── draw.rs    # frame and status line

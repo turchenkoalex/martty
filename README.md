@@ -1,3 +1,5 @@
+![martty logo](assets/logo.svg)
+
 # martty
 
 **Markdown, rendered properly, right in your terminal.**
@@ -26,11 +28,13 @@ of asterisks.
   protocol; animated GIF and WebP play as kitty animations.
 - 📊 **Mermaid diagrams.** Flowcharts, sequence diagrams, pie charts and more, rendered
   locally without a browser and colored to match your Ghostty theme.
-- 🔠 **Big headings.** H1–H3 are drawn at large sizes with JetBrains Mono.
+- 🔠 **Big headings.** H1–H3 are drawn at large sizes in the bold face of your Ghostty
+  `font-family`, or in the bundled JetBrains Mono when that font isn't installed.
 - ∑ **Math.** LaTeX formulas, inline and display, typeset with TeX's rules in STIX Two
   Math.
 - 🎨 **Theme-aware.** Highlighted code, diagrams and headings take their colors from your
-  terminal's palette, so they suit both light and dark themes.
+  terminal's palette, so they suit both light and dark themes. When Ghostty switches
+  between its light and dark theme, the pager redraws the document in the new colors.
 - 📜 **Built-in pager.** Scrolling, highlighted search, a table of contents, zoomable and
   pannable diagrams, copying as plain text, following a file as you edit it, and live
   re-layout when the window is resized.
@@ -217,6 +221,10 @@ settings start with `MARTTY_`:
 | `MARTTY_REMOTE` | `1` | Load `https://` images, as `--remote` does |
 | `MARTTY_TEXT_SIZING` | `0` / `1` | Disable or force OSC 66 text sizing for headings |
 | `MARTTY_NO_COLOR` | `1` | No colors: text keeps bold, italic and underline; images, diagrams and image headings are off, as with `MARTTY_IMAGES=0` |
+
+The pager also asks Ghostty to report theme switches (DEC 2031) and reads keys with the
+kitty keyboard protocol, so Esc and Alt combinations are never confused. Slow layouts,
+such as documents with many diagrams, show Ghostty's progress indicator (OSC 9;4).
 
 When graphics are not available, martty falls back to plain styled text: diagrams and
 formulas show up as code and images as their alt text.

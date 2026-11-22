@@ -17,6 +17,7 @@ mod math;
 mod mermaid;
 mod pager;
 mod picture;
+mod progress;
 mod remote;
 mod render;
 mod style;
@@ -31,7 +32,7 @@ use heading::HeadingFont;
 use pager::{Layout, Params};
 use render::{Config, Diagrams, Document, HeadingImages, Images, MathImages};
 use style::Color;
-use term::{Caps, Rgb, Size, luma, mix};
+use term::{Caps, Rgb, Size, Theme, luma, mix};
 
 const USAGE: &str =
     "usage: martty [-p|--pager] [-P|--no-pager] [-w|--follow] [--remote] [--width N] [FILE]";
@@ -77,6 +78,9 @@ fn run() -> io::Result<()> {
         .and_then(Path::file_name)
         .map_or_else(|| "stdin".to_owned(), |n| n.to_string_lossy().into_owned());
 
+    if io::stdout().is_terminal() {
+        HeadingFont::prefetch();
+    }
     let mut caps = term::probe();
     // Images go too: placeholders carry the image id in their foreground
     // color, and diagrams and image headings are colored anyway. Without a
@@ -84,7 +88,6 @@ fn run() -> io::Result<()> {
     let color = std::env::var_os("MARTTY_NO_COLOR").is_none_or(|v| v != "1");
     if !color {
         caps.graphics = false;
-        caps.bg = None;
     }
     let pending_input = std::mem::take(&mut caps.pending_input);
     let mut next_id = image_id_seed();
@@ -94,7 +97,12 @@ fn run() -> io::Result<()> {
             mut size,
             zoom,
             overflow,
+            mut theme,
         } = params;
+        if !color {
+            theme.bg = None;
+        }
+        let _busy = progress::Busy::start();
         if let Some(width) = args.width {
             size.cols = width;
         }
@@ -103,7 +111,7 @@ fn run() -> io::Result<()> {
         next_id = next_id.wrapping_add(0x1000);
         match layout {
             Layout::Document => {
-                let mut config = config(&caps, size, &base_dir, first_id, zoom, false);
+                let mut config = config(&caps, &theme, size, &base_dir, first_id, zoom, false);
                 config.color = color;
                 config.overflow = overflow;
                 // Read again on every layout, so following picks up edits;
@@ -121,13 +129,13 @@ fn run() -> io::Result<()> {
                     format!("> [!CAUTION]\n> Can't read `{}`: {e}\n", path.display())
                 });
                 let dir = path.parent().unwrap_or(Path::new("."));
-                let mut config = config(&caps, size, dir, first_id, zoom, false);
+                let mut config = config(&caps, &theme, size, dir, first_id, zoom, false);
                 config.color = color;
                 config.overflow = overflow;
                 render::render(&markdown, &config)
             }
             Layout::Diagram(source) => {
-                let mut config = config(&caps, size, &base_dir, first_id, zoom, true);
+                let mut config = config(&caps, &theme, size, &base_dir, first_id, zoom, true);
                 config.color = color;
                 render::render(&format!("```mermaid\n{source}\n```\n"), &config)
             }
@@ -139,6 +147,7 @@ fn run() -> io::Result<()> {
         size,
         zoom: 1.0,
         overflow: false,
+        theme: caps.theme,
     };
     let doc = render(Layout::Document, params);
     let page = io::stdout().is_terminal()
@@ -153,6 +162,7 @@ fn run() -> io::Result<()> {
             title: &title,
             file,
             follow: args.follow,
+            theme: caps.theme,
         };
         return pager::run(&options, doc, &pending_input, render);
     }
@@ -237,6 +247,7 @@ fn read_input(file: Option<&Path>) -> io::Result<(String, PathBuf)> {
 /// `fullscreen` lays out a lone diagram: no cap on its text size.
 fn config(
     caps: &Caps,
+    theme: &Theme,
     size: Size,
     base_dir: &Path,
     first_image_id: u32,
@@ -244,8 +255,8 @@ fn config(
     fullscreen: bool,
 ) -> Config {
     let cell = caps.graphics.then(|| caps.cell.or(size.cell)).flatten();
-    let bg = caps.bg.unwrap_or((0x1e, 0x1e, 0x1e));
-    let fg = caps.fg.unwrap_or_else(|| contrast(bg));
+    let bg = theme.bg.unwrap_or((0x1e, 0x1e, 0x1e));
+    let fg = theme.fg.unwrap_or_else(|| contrast(bg));
     let max_rows = u32::try_from(size.rows * 2 / 3)
         .unwrap_or(u32::MAX)
         .clamp(4, kitty::MAX_ROWS);
@@ -254,7 +265,7 @@ fn config(
         Some(HeadingImages {
             font: HeadingFont::load()?,
             cell,
-            colors: [5, 4, 6].map(|i| caps.palette[i].unwrap_or(fg)),
+            colors: [5, 4, 6].map(|i| theme.palette[i].unwrap_or(fg)),
         })
     });
     // Without the feature, mermaid blocks are shown as code.
@@ -265,8 +276,8 @@ fn config(
                 bg,
                 fg,
                 panel: panel_rgb(bg, fg),
-                accent: caps.palette[4].unwrap_or(fg),
-                ansi: std::array::from_fn(|i| caps.palette[i + 1].unwrap_or(fg)),
+                accent: theme.palette[4].unwrap_or(fg),
+                ansi: std::array::from_fn(|i| theme.palette[i + 1].unwrap_or(fg)),
             },
             cell,
             // Full screen, a diagram at zoom 1 fills the screen above the pager
@@ -298,7 +309,7 @@ fn config(
         color: true,
         overflow: false,
         text_sizing: caps.text_sizing,
-        code_bg: caps.bg.map(|bg| {
+        code_bg: theme.bg.map(|bg| {
             let (r, g, b) = panel_rgb(bg, fg);
             Color::Rgb(r, g, b)
         }),

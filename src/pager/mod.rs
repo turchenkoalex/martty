@@ -13,6 +13,14 @@
 //! With following on (`-w`, `F`), the file is checked for changes on every
 //! wake-up and laid out again when it changes, keeping the place by content.
 //!
+//! Ghostty reports theme switches (DEC 2031); the pager then asks for the
+//! colors again and lays every view out in them.
+//!
+//! Keys use the kitty keyboard protocol ("disambiguate", `CSI > 1 u`), so
+//! Esc and Alt combinations are told apart. Its flags are kept per screen,
+//! so they are pushed after entering the alternate screen and popped before
+//! leaving it.
+//!
 //! The mouse is left to Ghostty, so selecting text and Cmd+clicking OSC 8
 //! links work as anywhere else. Alternate scroll mode (DEC 1007) makes
 //! Ghostty turn the wheel into arrow keys on the alternate screen.
@@ -26,6 +34,7 @@ mod overlay;
 mod search;
 #[cfg(test)]
 mod tests;
+mod theme;
 mod view;
 
 use std::fs::OpenOptions;
@@ -36,14 +45,14 @@ use std::time::SystemTime;
 
 use crate::kitty;
 use crate::render::Document;
-use crate::term::{self, RawMode, Size};
+use crate::term::{self, RawMode, Size, Theme};
 
 use keys::read_keys;
 use overlay::Overlay;
 use view::{Kind, View};
 
-const ENTER: &str = "\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[?1007h";
-const LEAVE: &str = "\x1b[?1007l\x1b[?7h\x1b[?25h\x1b[?1049l";
+const ENTER: &str = "\x1b[?1049h\x1b[>1u\x1b[?25l\x1b[?7l\x1b[?1007h\x1b[?2031h";
+const LEAVE: &str = "\x1b[?2031l\x1b[?1007l\x1b[?7h\x1b[?25h\x1b[<u\x1b[?1049l";
 
 /// What to lay out: the document, a Markdown file opened from a link, or
 /// one diagram full screen.
@@ -61,6 +70,8 @@ pub struct Params {
     pub zoom: f32,
     /// Code and tables at their natural width, panned instead of wrapped.
     pub overflow: bool,
+    /// The terminal's colors, updated when its theme changes.
+    pub theme: Theme,
 }
 
 /// What the pager shows and how it starts.
@@ -70,6 +81,8 @@ pub struct Options<'a> {
     pub file: Option<&'a Path>,
     /// Follow changes from the start (`-w`).
     pub follow: bool,
+    /// The colors probed at start.
+    pub theme: Theme,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -109,6 +122,7 @@ pub fn run(
     let mut pager = Pager::new(options.title, term::size(), doc);
     pager.file = options.file.map(Path::to_path_buf);
     pager.follow = options.follow && pager.file.is_some();
+    pager.theme = options.theme;
     pager.views[0].modified = pager.file.as_deref().and_then(modified);
     pager.enter()?;
 
@@ -116,11 +130,19 @@ pub fn run(
     // Frames are drawn only after input or a resize, not on every wake-up.
     let mut dirty = true;
     loop {
+        // Keys typed while the colors were asked for again, handled next.
+        let mut later = Vec::new();
         for key in keys {
             dirty = true;
-            if pager.apply(key, &mut render)? == Action::Quit {
+            if key == keys::Key::ThemeChanged {
+                later.extend(pager.retheme(&mut tty, &mut render)?);
+            } else if pager.apply(key, &mut render)? == Action::Quit {
                 return Ok(());
             }
+        }
+        if !later.is_empty() {
+            keys = later;
+            continue;
         }
         if pager.reload_changed(&mut render)? {
             dirty = true;
@@ -165,6 +187,8 @@ struct Pager<'a> {
     follow: bool,
     /// The document's file; `None` when it came from stdin.
     file: Option<PathBuf>,
+    /// The terminal's colors, which views are laid out in.
+    theme: Theme,
     /// Set once the alternate screen is entered; restored on drop.
     active: bool,
 }
@@ -183,6 +207,7 @@ impl<'a> Pager<'a> {
             overflow: false,
             follow: false,
             file: None,
+            theme: Theme::default(),
             active: false,
         }
     }
@@ -311,6 +336,7 @@ impl<'a> Pager<'a> {
             size: self.size,
             zoom,
             overflow: self.overflow,
+            theme: self.theme,
         }
     }
 

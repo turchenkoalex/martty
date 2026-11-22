@@ -3,6 +3,7 @@ use super::overlay::Overlay;
 use super::view::View;
 use super::*;
 use crate::render::{ImageRow, Line};
+use unicode_width::UnicodeWidthStr;
 
 fn text_doc(lines: &[&str]) -> Document {
     Document {
@@ -118,6 +119,25 @@ fn draw_should_erase_rows_before_drawing_them() {
         "{frame:?}"
     );
     assert!(!frame.contains("abc\x1b[0m\x1b[K"), "{frame:?}");
+}
+
+#[test]
+fn draw_should_put_percent_at_right_edge_of_status() {
+    let mut frame = String::new();
+    pager(100, 11).draw(&mut frame);
+    assert!(frame.contains(" 10% \x1b[0m"), "{frame:?}");
+    let status = frame.rsplit("\x1b[7m").next().unwrap_or_default();
+    let status = status.strip_suffix("\x1b[0m\x1b[?25l\x1b[?2026l");
+    assert_eq!(status.map(UnicodeWidthStr::width), Some(80), "{frame:?}");
+}
+
+#[test]
+fn draw_should_keep_percent_when_status_is_truncated() {
+    let mut p = pager(100, 11);
+    p.size.cols = 20;
+    let mut frame = String::new();
+    p.draw(&mut frame);
+    assert!(frame.contains(" 10% \x1b[0m"), "{frame:?}");
 }
 
 fn link_line(url: &str, text: &str) -> String {
