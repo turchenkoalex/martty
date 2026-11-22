@@ -64,6 +64,12 @@ of asterisks.
 
 ## Installation
 
+### Homebrew (macOS, Linux)
+
+```sh
+brew install turchenkoalex/tap/martty
+```
+
 ### Prebuilt binaries
 
 Each [release](https://github.com/turchenkoalex/martty/releases/latest) has binaries for

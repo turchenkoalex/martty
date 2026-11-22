@@ -521,7 +521,10 @@ Euler: <span class="m">$</span>e^{i\pi} + 1 = 0<span class="m">$</span>
           <a class="btn ghost" href="https://github.com/turchenkoalex/martty/releases/latest/download/martty-x86_64-unknown-linux-musl.tar.gz"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>Linux <small>x86_64</small></a>
           <a class="btn ghost" href="https://github.com/turchenkoalex/martty/releases/latest/download/martty-aarch64-unknown-linux-musl.tar.gz"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>Linux <small>arm64</small></a>
         </div>
-<pre><span class="p">$ </span>target=aarch64-apple-darwin  <span class="c"># or x86_64-unknown-linux-musl, aarch64-unknown-linux-musl</span>
+<pre><span class="p">$ </span>brew install turchenkoalex/tap/martty
+
+<span class="c"># or by hand:</span>
+<span class="p">$ </span>target=aarch64-apple-darwin  <span class="c"># or x86_64-unknown-linux-musl, aarch64-unknown-linux-musl</span>
 <span class="p">$ </span>mkdir -p ~/.local/bin
 <span class="p">$ </span>curl -fsSL https://github.com/turchenkoalex/martty/releases/latest/download/martty-$target.tar.gz \
     | tar -xz -C ~/.local/bin --strip-components 1 martty-$target/martty</pre>
