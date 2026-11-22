@@ -45,6 +45,7 @@ of asterisks.
 | Images | Local PNG; a missing image falls back to its alt text |
 | Mermaid | ` ```mermaid ` blocks are rendered as diagrams |
 | Rules | `---` |
+| Emoji | Common GitHub shortcodes such as `:rocket:` and `:+1:` |
 | HTML | `<br>`, `<kbd>`, `<sub>`/`<sup>`, `<details>`/`<summary>` (expanded), `<b>`, `<i>`, `<mark>`, `<a>`, `<img>`; other tags are dropped and their text kept, comments hidden |
 | Front matter | YAML (`---`) or TOML (`+++`), shown as dimmed `key  value` lines |
 

@@ -4,6 +4,7 @@
 
 mod blocks;
 mod document;
+mod emoji;
 mod html;
 mod images;
 mod inline;

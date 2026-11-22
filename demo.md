@@ -54,7 +54,8 @@ pie title Where time goes
   - nested **bold** item
   - another one
 - [ ] todo
-- [x] done
+- [x] done :tada:
+- shortcodes like :rocket: and :+1: become emoji
 
 8. eight
 9. nine

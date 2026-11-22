@@ -1,6 +1,7 @@
 use std::mem;
 use std::rc::Rc;
 
+use super::emoji::replace_shortcodes;
 use super::images::PendingImage;
 use super::span::Span;
 use super::{ACCENT, BULLETS, LINK, Renderer};
@@ -30,10 +31,11 @@ impl Renderer<'_> {
         self.styles.push(style);
     }
 
-    /// Text from the document: `==text==` is highlighted. Only pairs within
-    /// one text event count, and the marked text can't start or end with a
-    /// space, so `a == b` stays as it is.
+    /// Text from the document: emoji shortcodes are replaced and `==text==`
+    /// is highlighted. Only pairs within one text event count, and the
+    /// marked text can't start or end with a space, so `a == b` stays as is.
     pub(super) fn push_prose(&mut self, text: &str) {
+        let text = replace_shortcodes(text);
         let mut parts = text.split("==");
         let mut plain = parts.next().unwrap_or_default().to_owned();
         let rest: Vec<&str> = parts.collect();
