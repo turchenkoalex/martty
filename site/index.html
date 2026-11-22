@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>martty — Markdown in Ghostty</title>
+<meta name="description" content="A tiny, fast Markdown viewer for Ghostty: real images, Mermaid diagrams, LaTeX math, big headings and a less-style pager.">
+<meta property="og:title" content="martty — Markdown, rendered properly, right in your terminal">
+<meta property="og:description" content="Images, Mermaid diagrams, math and big headings in Ghostty, with a less-style pager. One static binary.">
+<meta name="theme-color" content="#16161e">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316161e'/%3E%3Cpath d='M8 22V10l5 6 5-6v12' fill='none' stroke='%23f5a97f' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M21 22h4' stroke='%238aadf4' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f7f5f0;
+  --bg-2: #efece4;
+  --fg: #1d1b22;
+  --muted: #5f5b68;
+  --line: #dcd7cc;
+  --card: #ffffff;
+  --accent: #c2410c;
+  --accent-2: #2f55c8;
+  --term-bg: #fbfaf7;
+  --term-fg: #2a2733;
+  --term-dim: #8a8494;
+  --term-bar: #ece8df;
+  --term-code: #f0ece3;
+  --t-red: #c0392b;
+  --t-green: #3c8a3f;
+  --t-yellow: #a8710a;
+  --t-blue: #2f55c8;
+  --t-magenta: #8e44ad;
+  --t-cyan: #17808f;
+  --shadow: 0 30px 60px -20px rgba(40, 30, 10, .25), 0 0 0 1px rgba(0,0,0,.06);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101015;
+    --bg-2: #16161e;
+    --fg: #e8e6ef;
+    --muted: #9c98aa;
+    --line: #2a2935;
+    --card: #17171f;
+    --accent: #f5a97f;
+    --accent-2: #8aadf4;
+    --term-bg: #1a1b26;
+    --term-fg: #c8cbe0;
+    --term-dim: #6b6f8a;
+    --term-bar: #14141c;
+    --term-code: #232433;
+    --t-red: #f7768e;
+    --t-green: #9ece6a;
+    --t-yellow: #e0af68;
+    --t-blue: #7aa2f7;
+    --t-magenta: #bb9af7;
+    --t-cyan: #7dcfff;
+    --shadow: 0 40px 80px -20px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.06);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101015;
+  --bg-2: #16161e;
+  --fg: #e8e6ef;
+  --muted: #9c98aa;
+  --line: #2a2935;
+  --card: #17171f;
+  --accent: #f5a97f;
+  --accent-2: #8aadf4;
+  --term-bg: #1a1b26;
+  --term-fg: #c8cbe0;
+  --term-dim: #6b6f8a;
+  --term-bar: #14141c;
+  --term-code: #232433;
+  --t-red: #f7768e;
+  --t-green: #9ece6a;
+  --t-yellow: #e0af68;
+  --t-blue: #7aa2f7;
+  --t-magenta: #bb9af7;
+  --t-cyan: #7dcfff;
+  --shadow: 0 40px 80px -20px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.06);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow-x: hidden;
+}
+a { color: inherit; }
+code, kbd, pre, .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 720px) { .wrap { padding: 0 32px; } }
+
+/* nav */
+nav { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; }
+.logo { display: flex; align-items: center; gap: 10px; font: 800 20px/1 "JetBrains Mono", monospace; text-decoration: none; letter-spacing: -.02em; }
+.logo svg { width: 28px; height: 28px; }
+.nav-links { display: flex; align-items: center; gap: 6px; }
+.nav-links a, .icon-btn {
+  font-size: 14px; color: var(--muted); text-decoration: none; padding: 8px 12px; border-radius: 8px;
+  background: none; border: 0; cursor: pointer; font-family: inherit;
+}
+.nav-links a:hover, .icon-btn:hover { color: var(--fg); background: var(--bg-2); }
+.icon-btn { display: inline-flex; align-items: center; padding: 8px; }
+.icon-btn svg { width: 18px; height: 18px; }
+@media (max-width: 560px) { .nav-links .hide-sm { display: none; } }
+
+/* hero */
+.hero { padding: 48px 0 24px; text-align: center; }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 8px; font: 500 13px/1 "JetBrains Mono", monospace;
+  color: var(--muted); border: 1px solid var(--line); padding: 7px 12px; border-radius: 999px;
+}
+.eyebrow i { width: 7px; height: 7px; border-radius: 50%; background: var(--t-green); display: block; }
+h1 {
+  font: 800 clamp(40px, 7.5vw, 84px)/1.02 "JetBrains Mono", monospace;
+  letter-spacing: -.045em; margin: 22px auto 18px; max-width: 14ch;
+}
+h1 em { font-style: normal; color: var(--accent); }
+.lede { font-size: clamp(17px, 2.2vw, 20px); color: var(--muted); max-width: 620px; margin: 0 auto 32px; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.btn {
+  display: inline-flex; align-items: center; gap: 10px; padding: 13px 20px; border-radius: 10px;
+  font: 600 15px/1 Inter, sans-serif; text-decoration: none; border: 1px solid var(--line);
+}
+.btn svg { width: 18px; height: 18px; }
+.btn.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.btn.primary:hover { opacity: .9; }
+.btn.ghost:hover { background: var(--bg-2); }
+.copy {
+  display: inline-flex; align-items: center; gap: 12px; padding: 0 6px 0 16px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--card); font: 14px/1 "JetBrains Mono", monospace; max-width: 100%;
+}
+.copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 13px 0; }
+.copy span b { color: var(--accent); font-weight: 400; }
+.copy button {
+  border: 0; background: var(--bg-2); color: var(--muted); border-radius: 7px; padding: 7px 10px; cursor: pointer;
+  font: 12px/1 "JetBrains Mono", monospace; flex: none;
+}
+.copy button:hover { color: var(--fg); }
+
+/* terminal */
+.stage { position: relative; margin: 56px auto 0; max-width: 940px; }
+.stage::before {
+  content: ""; position: absolute; inset: 10% -8% -6%; z-index: -1; filter: blur(70px); opacity: .5;
+  background: radial-gradient(40% 50% at 30% 40%, var(--accent) 0, transparent 70%),
+              radial-gradient(40% 50% at 70% 60%, var(--accent-2) 0, transparent 70%);
+}
+.term { background: var(--term-bg); color: var(--term-fg); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; text-align: left; }
+.term-bar { display: flex; align-items: center; gap: 8px; padding: 12px 14px; background: var(--term-bar); border-bottom: 1px solid var(--line); }
+.dots { display: flex; gap: 7px; flex: none; }
+.dots i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; display: block; }
+.dots i:nth-child(2) { background: #febc2e; }
+.dots i:nth-child(3) { background: #28c840; }
+.tabs { margin: 0 auto; display: flex; background: var(--term-bg); border: 1px solid var(--line); border-radius: 8px; padding: 3px; }
+.tabs button {
+  border: 0; background: none; color: var(--term-dim); font: 12px/1 "JetBrains Mono", monospace; padding: 6px 10px;
+  border-radius: 6px; cursor: pointer; white-space: nowrap;
+}
+.tabs button[aria-selected="true"] { background: var(--term-code); color: var(--term-fg); }
+.dots-pad { width: 50px; flex: none; }
+@media (max-width: 480px) { .dots-pad { display: none; } }
+
+.screen { font: 14px/1.6 "JetBrains Mono", monospace; padding: 22px clamp(16px, 4vw, 34px) 0; min-height: 560px; }
+.screen[hidden] { display: none; }
+.prompt { color: var(--term-dim); margin-bottom: 14px; }
+.prompt b { color: var(--t-green); font-weight: 400; }
+.r-h1 { font-size: clamp(26px, 4.5vw, 40px); font-weight: 800; letter-spacing: -.03em; line-height: 1.15; margin: 6px 0 10px; }
+.r-h2 { font-size: 22px; font-weight: 800; margin: 22px 0 6px; letter-spacing: -.02em; }
+.r-p { margin: 0 0 12px; }
+.r-p b { font-weight: 800; }
+.r-p a { color: var(--t-blue); text-underline-offset: 3px; }
+.r-p code, .r-td code { color: var(--t-magenta); background: var(--term-code); padding: 0 4px; border-radius: 3px; }
+.r-alert { border-left: 3px solid var(--t-blue); padding: 2px 0 2px 14px; margin: 0 0 14px; }
+.r-alert .t { color: var(--t-blue); font-weight: 600; }
+.r-code { background: var(--term-code); padding: 12px 16px; margin: 0 0 14px; border-radius: 4px; overflow-x: auto; white-space: pre; }
+.k { color: var(--t-magenta); } .s { color: var(--t-green); } .f { color: var(--t-blue); } .c { color: var(--term-dim); font-style: italic; } .n { color: var(--t-yellow); }
+.r-grid { display: grid; grid-template-columns: 1fr; gap: 18px; margin: 6px 0 14px; }
+@media (min-width: 760px) { .r-grid { grid-template-columns: 1.25fr 1fr; align-items: start; } }
+.r-diagram svg { width: 100%; height: auto; display: block; }
+.r-table { width: 100%; border-collapse: collapse; }
+.r-table th { text-align: left; font-weight: 800; border-bottom: 1px solid var(--term-dim); padding: 2px 8px 4px 0; }
+.r-table td { padding: 3px 8px 3px 0; border-bottom: 1px dashed var(--line); }
+.r-table td.num { text-align: right; color: var(--t-yellow); }
+.math { font-family: "STIX Two Math", "Cambria Math", "Latin Modern Math", Georgia, serif; font-size: 1.15em; }
+.math i { font-style: italic; }
+.r-task { margin: 0 0 12px; padding: 0; list-style: none; }
+.r-task li::before { content: "☐ "; color: var(--term-dim); }
+.r-task li.done::before { content: "☑ "; color: var(--t-green); }
+.r-task li.done { color: var(--term-dim); text-decoration: line-through; }
+.status {
+  margin: 18px calc(-1 * clamp(16px, 4vw, 34px)) 0; padding: 6px clamp(16px, 4vw, 34px);
+  display: flex; justify-content: space-between; gap: 12px; background: var(--term-code); color: var(--term-dim); font-size: 12px;
+}
+.status b { color: var(--term-fg); font-weight: 600; }
+.raw { color: var(--term-fg); white-space: pre-wrap; word-break: break-word; }
+.raw .m { color: var(--term-dim); }
+
+/* sections */
+section { padding: 96px 0 0; }
+.kicker { font: 600 13px/1 "JetBrains Mono", monospace; color: var(--accent); text-transform: uppercase; letter-spacing: .12em; }
+h2 { font: 800 clamp(28px, 4vw, 44px)/1.1 "JetBrains Mono", monospace; letter-spacing: -.035em; margin: 14px 0 14px; max-width: 22ch; }
+.sub { color: var(--muted); max-width: 620px; margin: 0 0 40px; font-size: 17px; }
+
+.features { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.feature { background: var(--card); padding: 28px 26px; }
+.feature .ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--bg-2); color: var(--accent); margin-bottom: 18px; }
+.feature .ico svg { width: 22px; height: 22px; }
+.feature h3 { font: 600 17px/1.3 Inter, sans-serif; margin: 0 0 6px; }
+.feature p { margin: 0; color: var(--muted); font-size: 15px; }
+
+.pipeline { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: clamp(16px, 4vw, 40px); }
+.pipeline svg { width: 100%; height: auto; display: block; }
+.pipeline svg text { font-family: "JetBrains Mono", monospace; }
+.pipe-note { display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); margin-top: 28px; }
+.pipe-note p { margin: 0; color: var(--muted); font-size: 15px; }
+.pipe-note b { color: var(--fg); font-weight: 600; }
+
+.keys { display: grid; gap: 10px 32px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.key { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.key span { color: var(--muted); font-size: 15px; }
+.key div { display: flex; gap: 5px; flex: none; }
+kbd {
+  font-size: 12px; min-width: 28px; text-align: center; padding: 5px 8px; border-radius: 6px; background: var(--card);
+  border: 1px solid var(--line); border-bottom-width: 3px; color: var(--fg);
+}
+
+.install { display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 26px; min-width: 0; }
+.panel h3 { font: 600 17px/1.3 Inter, sans-serif; margin: 0 0 14px; }
+.panel pre { margin: 0; background: var(--bg-2); border-radius: 10px; padding: 16px 18px; overflow-x: auto; font-size: 14px; line-height: 1.7; }
+.panel pre .c { color: var(--muted); font-style: normal; }
+.panel pre .p { color: var(--accent); user-select: none; }
+.panel p { color: var(--muted); font-size: 15px; margin: 14px 0 0; }
+.flags { width: 100%; border-collapse: collapse; font-size: 14px; }
+.flags td { padding: 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.flags tr:last-child td { border-bottom: 0; }
+.flags td:first-child { white-space: nowrap; padding-right: 16px; }
+.flags td:first-child code { color: var(--accent); }
+.flags td:last-child { color: var(--muted); }
+.flags .on { font-size: 11px; color: var(--t-green); border: 1px solid currentColor; border-radius: 4px; padding: 1px 5px; margin-left: 6px; font-family: "JetBrains Mono", monospace; }
+
+footer { margin-top: 110px; border-top: 1px solid var(--line); padding: 32px 0 48px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
+footer a { color: var(--muted); }
+footer a:hover { color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a class="logo" href="#">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#16161e"/><path d="M8 22V10l5 6 5-6v12" fill="none" stroke="#f5a97f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 22h4" stroke="#8aadf4" stroke-width="3" stroke-linecap="round"/></svg>
+      martty
+    </a>
+    <div class="nav-links">
+      <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#how">How it works</a>
+      <a class="hide-sm" href="#install">Install</a>
+      <button class="icon-btn" id="theme" aria-label="Toggle light and dark theme" title="Toggle theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+      <a class="icon-btn" href="https://github.com/turchenkoalex/martty" aria-label="GitHub repository">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+      </a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <span class="eyebrow"><i></i>built for Ghostty · written in Rust</span>
+    <h1>Markdown, <em>rendered</em> in your terminal.</h1>
+    <p class="lede">A tiny, fast viewer with real images, Mermaid diagrams, LaTeX math, big headings and a <code>less</code>-style pager. Your README looks like a document, not a dump of asterisks.</p>
+    <div class="cta">
+      <div class="copy"><span><b>$</b> cargo install --git https://github.com/turchenkoalex/martty</span><button data-copy="cargo install --git https://github.com/turchenkoalex/martty">copy</button></div>
+      <a class="btn ghost" href="https://github.com/turchenkoalex/martty">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+
+    <div class="stage">
+      <div class="term">
+        <div class="term-bar">
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div class="tabs" role="tablist" aria-label="Compare output">
+            <button role="tab" aria-selected="false" data-screen="raw">cat notes.md</button>
+            <button role="tab" aria-selected="true" data-screen="rendered">martty notes.md</button>
+          </div>
+          <div class="dots-pad"></div>
+        </div>
+
+        <div class="screen" id="rendered">
+          <div class="prompt"><b>~/notes</b> ❯ martty notes.md</div>
+          <div class="r-h1">Release notes</div>
+          <p class="r-p">The renderer is now <b>twice as fast</b> on large files, and <em>every</em> image is sent once: scrolling only redraws text. See <a href="#how">how it works</a> or run <code>martty --help</code>.</p>
+          <div class="r-alert"><div class="t">ⓘ Note</div>Colors come from your Ghostty theme, so this looks right in light and dark.</div>
+          <div class="r-code"><span class="k">fn</span> <span class="f">main</span>() {
+    <span class="k">let</span> doc = <span class="f">render</span>(<span class="s">"# Hello"</span>, <span class="n">80</span>);
+    <span class="c">// placeholders, not pixels</span>
+    <span class="f">print!</span>(<span class="s">"{doc}"</span>);
+}</div>
+          <div class="r-grid">
+            <div class="r-diagram" aria-label="Mermaid flowchart">
+              <svg viewBox="0 0 420 150" role="img">
+                <defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--term-dim)"/></marker></defs>
+                <g font-family="JetBrains Mono, monospace" font-size="12" text-anchor="middle">
+                  <rect x="4" y="55" width="96" height="38" rx="6" fill="var(--term-code)" stroke="var(--t-blue)"/>
+                  <text x="52" y="78" fill="var(--term-fg)">Markdown</text>
+                  <path d="M100 74H140" stroke="var(--term-dim)" marker-end="url(#a1)"/>
+                  <path d="M190 30L240 74L190 118L140 74Z" fill="var(--term-code)" stroke="var(--t-magenta)"/>
+                  <text x="190" y="78" fill="var(--term-fg)">block?</text>
+                  <path d="M215 52L290 28" stroke="var(--term-dim)" marker-end="url(#a1)"/>
+                  <path d="M215 96L290 120" stroke="var(--term-dim)" marker-end="url(#a1)"/>
+                  <rect x="292" y="8" width="122" height="38" rx="19" fill="var(--term-code)" stroke="var(--t-green)"/>
+                  <text x="353" y="31" fill="var(--term-fg)">styled text</text>
+                  <rect x="292" y="102" width="122" height="38" rx="6" fill="var(--term-code)" stroke="var(--t-yellow)"/>
+                  <text x="353" y="125" fill="var(--term-fg)">kitty image</text>
+                </g>
+              </svg>
+            </div>
+            <div>
+              <table class="r-table">
+                <thead><tr><th>Feature</th><th style="text-align:right">Size</th></tr></thead>
+                <tbody>
+                  <tr><td class="r-td"><code>mermaid</code></td><td class="num">10 MB</td></tr>
+                  <tr><td class="r-td"><code>math</code></td><td class="num">2.5 MB</td></tr>
+                  <tr><td class="r-td"><code>highlight</code></td><td class="num">1 MB</td></tr>
+                </tbody>
+              </table>
+              <p class="r-p" style="margin-top:14px">Euler: <span class="math"><i>e</i><sup><i>iπ</i></sup> + 1 = 0</span></p>
+              <ul class="r-task">
+                <li class="done">Tables that wrap</li>
+                <li>Watch mode</li>
+              </ul>
+            </div>
+          </div>
+          <div class="status"><span><b>notes.md</b> · 1–24 of 31</span><span>77%</span></div>
+        </div>
+
+        <div class="screen" id="raw" hidden>
+          <div class="prompt"><b>~/notes</b> ❯ cat notes.md</div>
+<div class="raw"><span class="m">#</span> Release notes
+
+The renderer is now <span class="m">**</span>twice as fast<span class="m">**</span> on large files, and <span class="m">*</span>every<span class="m">*</span> image is sent once: scrolling only redraws text. See <span class="m">[</span>how it works<span class="m">](#how)</span> or run <span class="m">`</span>martty --help<span class="m">`</span>.
+
+<span class="m">&gt; [!NOTE]
+&gt;</span> Colors come from your Ghostty theme, so this looks right in light and dark.
+
+<span class="m">```rust</span>
+fn main() {
+    let doc = render("# Hello", 80);
+    // placeholders, not pixels
+    print!("{doc}");
+}
+<span class="m">```</span>
+
+<span class="m">```mermaid</span>
+flowchart LR
+    A[Markdown] --&gt; B{block?}
+    B --&gt; C([styled text])
+    B --&gt; D[kitty image]
+<span class="m">```</span>
+
+<span class="m">|</span> Feature   <span class="m">|</span> Size   <span class="m">|</span>
+<span class="m">|-----------|-------:|</span>
+<span class="m">|</span> `mermaid` <span class="m">|</span> 10 MB  <span class="m">|</span>
+
+Euler: <span class="m">$</span>e^{i\pi} + 1 = 0<span class="m">$</span>
+
+<span class="m">- [x]</span> Tables that wrap
+<span class="m">- [ ]</span> Watch mode</div>
+          <div class="status"><span><b>~/notes</b></span><span>zsh</span></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section id="features">
+    <div class="kicker">Features</div>
+    <h2>Everything Ghostty can draw, put to use.</h2>
+    <p class="sub">Most terminal Markdown viewers stick to plain text. martty targets one terminal and uses all of it: kitty graphics with Unicode placeholders, OSC 8 hyperlinks, synchronized output and theme color queries.</p>
+    <div class="features">
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg></div>
+        <h3>Images inline</h3>
+        <p>PNG, JPEG, GIF, WebP and SVG via the kitty graphics protocol. Animated GIF and WebP play.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="2" y="9" width="6" height="6" rx="1"/><rect x="16" y="3" width="6" height="6" rx="1"/><rect x="16" y="15" width="6" height="6" rx="1"/><path d="M8 12h4m0 0V6h4m-4 6v6h4"/></svg></div>
+        <h3>Mermaid diagrams</h3>
+        <p>Flowcharts, sequence, class, state, gantt, pie and more, rendered locally with no browser and colored by your theme.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7V5h16v2M12 5v14m-3 0h6"/></svg></div>
+        <h3>Big headings</h3>
+        <p>H1–H3 drawn large in JetBrains Mono, so a document has a shape you can scan.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 4H6l6 8-6 8h12"/></svg></div>
+        <h3>LaTeX math</h3>
+        <p>Inline <code>$…$</code> sits on the text baseline; <code>$$…$$</code> is centered. Typeset with TeX rules in STIX Two Math.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg></div>
+        <h3>Theme-aware</h3>
+        <p>Code, diagrams and headings take their colors from the terminal palette. Light or dark, it fits.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 10h16M4 14h10M4 18h7"/><circle cx="18" cy="17" r="2.5"/><path d="m20 19 2 2"/></svg></div>
+        <h3>Built-in pager</h3>
+        <p>Scrolling, smart-case search, link navigation, mouse wheel, zoom and pan for diagrams, live re-layout on resize.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="m3 7 9 5 9-5M12 12v10"/></svg></div>
+        <h3>Self-contained</h3>
+        <p>One static binary. No browser, no Node, no runtime to install.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></div>
+        <h3>Clickable links</h3>
+        <p>OSC 8 hyperlinks everywhere. In the pager, <kbd>Tab</kbd> through links and open <code>.md</code> files in place.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg></div>
+        <h3>GitHub-flavored</h3>
+        <p>Tables that wrap to fit, task lists, footnotes, alerts, front matter, emoji shortcodes and common inline HTML.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="kicker">How it works</div>
+    <h2>Pixels go once. Then it's all text.</h2>
+    <p class="sub">Every image, diagram, formula and heading is transmitted to Ghostty a single time, then placed with Unicode placeholder characters. Each rendered line stays plain text.</p>
+    <div class="pipeline">
+      <svg viewBox="0 0 960 300" role="img" aria-label="Rendering pipeline: Markdown is parsed by pulldown-cmark, then each block becomes ANSI text, or an image via merman, latex-rust, fontdue and resvg, placed with kitty Unicode placeholders, all shown in Ghostty">
+        <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--muted)"/></marker></defs>
+        <g font-size="14" text-anchor="middle" fill="var(--fg)">
+          <rect x="10" y="125" width="120" height="50" rx="10" fill="var(--bg-2)" stroke="var(--line)"/>
+          <text x="70" y="155">Markdown</text>
+          <path d="M130 150H170" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#a2)"/>
+          <rect x="172" y="125" width="150" height="50" rx="10" fill="var(--bg-2)" stroke="var(--line)"/>
+          <text x="247" y="155">pulldown-cmark</text>
+
+          <path d="M322 150C350 150 350 40 380 40" fill="none" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#a2)"/>
+          <path d="M322 150C350 150 350 110 380 110" fill="none" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#a2)"/>
+          <path d="M322 150C350 150 350 180 380 180" fill="none" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#a2)"/>
+          <path d="M322 150C350 150 350 250 380 250" fill="none" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#a2)"/>
+
+          <rect x="382" y="18" width="170" height="44" rx="10" fill="var(--bg-2)" stroke="var(--t-green)"/>
+          <text x="467" y="45">text → ANSI, OSC 8</text>
+          <rect x="382" y="88" width="170" height="44" rx="10" fill="var(--bg-2)" stroke="var(--t-magenta)"/>
+          <text x="467" y="115">mermaid → merman</text>
+          <rect x="382" y="158" width="170" height="44" rx="10" fill="var(--bg-2)" stroke="var(--t-yellow)"/>
+          <text x="467" y="185">math → latex-rust</text>
+          <rect x="382" y="228" width="170" height="44" rx="10" fill="var(--bg-2)" stroke="var(--t-cyan)"/>
+          <text x="467" y="255">H1–H3 → fontdue</text>
+
+          <path d="M552 110H590" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#a2)"/>
+          <path d="M552 180H590" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#a2)"/>
+          <rect x="592" y="88" width="90" height="114" rx="10" fill="var(--bg-2)" stroke="var(--line)"/>
+          <text x="637" y="150">resvg</text>
+
+          <path d="M682 145H710" stroke="var(--muted)" stroke-width="1.5"/>
+          <path d="M552 250C640 250 690 250 710 220" fill="none" stroke="var(--muted)" stroke-width="1.5"/>
+          <path d="M710 145V220" stroke="var(--muted)" stroke-width="1.5"/>
+          <path d="M710 182H728" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#a2)"/>
+          <rect x="730" y="150" width="120" height="64" rx="10" fill="var(--bg-2)" stroke="var(--accent-2)"/>
+          <text x="790" y="178">kitty</text>
+          <text x="790" y="198" font-size="11" fill="var(--muted)">placeholders</text>
+
+          <path d="M552 40C800 40 880 60 895 120" fill="none" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#a2)"/>
+          <path d="M850 182H868" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#a2)"/>
+          <circle cx="905" cy="170" r="44" fill="var(--fg)"/>
+          <text x="905" y="175" fill="var(--bg)" font-weight="800">Ghostty</text>
+        </g>
+      </svg>
+      <div class="pipe-note">
+        <p><b>Cheap scrolling.</b> The pager redraws a window of text lines and never re-sends pixels, so panning a huge diagram is as fast as moving the cursor.</p>
+        <p><b>One probe.</b> At startup martty asks the terminal one round of questions: theme colors, kitty graphics, cell size in pixels.</p>
+        <p><b>Graceful fallback.</b> Without graphics, diagrams and formulas show as code and images as their alt text. Nothing panics.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="pager">
+    <div class="kicker">Pager</div>
+    <h2>Feels like <code>less</code>. Knows it's Markdown.</h2>
+    <p class="sub">Long documents open in a full-screen pager. The mouse stays with Ghostty, so you can select text and Cmd-click links as usual.</p>
+    <div class="keys">
+      <div class="key"><span>Scroll</span><div><kbd>j</kbd><kbd>k</kbd><kbd>↑</kbd><kbd>↓</kbd></div></div>
+      <div class="key"><span>Page down / up</span><div><kbd>Space</kbd><kbd>b</kbd></div></div>
+      <div class="key"><span>Top / bottom</span><div><kbd>g</kbd><kbd>G</kbd></div></div>
+      <div class="key"><span>Search, next, previous</span><div><kbd>/</kbd><kbd>n</kbd><kbd>N</kbd></div></div>
+      <div class="key"><span>Next / previous link</span><div><kbd>Tab</kbd><kbd>⇧Tab</kbd></div></div>
+      <div class="key"><span>Open link, go back</span><div><kbd>Enter</kbd><kbd>⌫</kbd></div></div>
+      <div class="key"><span>Zoom diagrams</span><div><kbd>+</kbd><kbd>-</kbd><kbd>0</kbd></div></div>
+      <div class="key"><span>Pan wide images</span><div><kbd>h</kbd><kbd>l</kbd></div></div>
+      <div class="key"><span>Diagram full screen</span><div><kbd>z</kbd></div></div>
+      <div class="key"><span>Quit</span><div><kbd>q</kbd></div></div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="kicker">Install</div>
+    <h2>Build it from source.</h2>
+    <p class="sub">martty isn't on crates.io yet. You need a recent stable Rust toolchain with edition 2024 support.</p>
+    <div class="install">
+      <div class="panel">
+        <h3>Install and run</h3>
+<pre><span class="p">$ </span>cargo install --git https://github.com/turchenkoalex/martty
+
+<span class="p">$ </span>martty README.md          <span class="c"># view a file</span>
+<span class="p">$ </span>cat notes.md | martty     <span class="c"># read from stdin</span>
+<span class="p">$ </span>martty -p short.md        <span class="c"># always open the pager</span>
+<span class="p">$ </span>martty --width 72 doc.md  <span class="c"># lay out for 72 columns</span></pre>
+        <p>Short output prints straight to stdout; anything taller than the screen opens the pager.</p>
+      </div>
+      <div class="panel">
+        <h3>Cargo features</h3>
+        <table class="flags">
+          <tr><td><code>mermaid</code><span class="on">default</span></td><td>Diagrams via merman, about 10 MB</td></tr>
+          <tr><td><code>math</code><span class="on">default</span></td><td>LaTeX via latex-rust and STIX Two Math, about 2.5 MB</td></tr>
+          <tr><td><code>highlight</code><span class="on">default</span></td><td>Syntax highlighting via syntect, about 1 MB</td></tr>
+          <tr><td><code>remote</code></td><td>Images from http(s) URLs, cached on disk for a day</td></tr>
+        </table>
+        <p>Trim the binary with <code>--no-default-features</code> and add back what you need with <code>--features</code>.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>martty · Apache-2.0 · JetBrains Mono bundled under the SIL OFL</span>
+    <span><a href="https://github.com/turchenkoalex/martty">GitHub</a> · <a href="https://ghostty.org">Ghostty</a></span>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const root = document.documentElement;
+  const KEY = "martty-theme";
+  try { const t = localStorage.getItem(KEY); if (t) root.dataset.theme = t; } catch (e) {}
+  document.getElementById("theme").addEventListener("click", () => {
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem(KEY, root.dataset.theme); } catch (e) {}
+  });
+
+  document.querySelectorAll(".tabs button").forEach((b, _, all) => {
+    b.addEventListener("click", () => {
+      all.forEach(x => {
+        const on = x === b;
+        x.setAttribute("aria-selected", on);
+        document.getElementById(x.dataset.screen).hidden = !on;
+      });
+    });
+  });
+
+  document.querySelectorAll("[data-copy]").forEach(b => {
+    b.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "copied"; }
+      catch (e) { b.textContent = "select it"; }
+      setTimeout(() => (b.textContent = "copy"), 1500);
+    });
+  });
+})();
+</script>
+</body>
+</html>

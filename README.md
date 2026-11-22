@@ -3,7 +3,7 @@
 **Markdown, rendered properly, right in your terminal.**
 
 A tiny, fast Markdown viewer built for [Ghostty](https://ghostty.org), with real images,
-Mermaid diagrams, big headings and a `less`-style pager.
+Mermaid diagrams, big headings and a `less`-style pager. [Website](https://turchenkoalex.github.io/martty/)
 
 ![Rust](https://img.shields.io/badge/rust-2024_edition-orange?logo=rust)
 ![Terminal](https://img.shields.io/badge/terminal-Ghostty-6f42c1)
@@ -59,7 +59,7 @@ martty is not published yet, so build it from source. You need a recent stable R
 toolchain with edition 2024 support (Rust 1.100+).
 
 ```sh
-git clone <repo-url> martty
+git clone https://github.com/turchenkoalex/martty.git
 cd martty
 cargo install --path .
 ```
