@@ -50,16 +50,37 @@ pub(super) fn find_in_line(line: &str, query: &str) -> Vec<Range<usize>> {
 }
 
 fn find_all(view: &View, query: &str) -> Vec<Hit> {
-    view.doc
+    let doc = &view.doc;
+    let mut hits: Vec<Hit> = doc
         .lines
         .iter()
         .enumerate()
+        .filter(|(_, l)| l.image.is_none())
         .flat_map(|(line, l)| {
             find_in_line(&l.text, query)
                 .into_iter()
                 .map(move |range| Hit { line, range })
         })
-        .collect()
+        .collect();
+    // A heading drawn as an image has no text on its lines, so its matches
+    // land on its first row with an empty range: the pager moves there, and
+    // nothing is reversed, since swapping the colors of placeholder cells
+    // would change the image id they carry.
+    for heading in &doc.headings {
+        if doc
+            .lines
+            .get(heading.line)
+            .is_some_and(|l| l.image.is_some())
+        {
+            let count = find_in_line(&heading.text, query).len();
+            hits.extend((0..count).map(|_| Hit {
+                line: heading.line,
+                range: 0..0,
+            }));
+        }
+    }
+    hits.sort_by_key(|h| h.line);
+    hits
 }
 
 impl Pager<'_> {
@@ -133,7 +154,7 @@ impl Pager<'_> {
             .hits
             .iter()
             .flat_map(|(_, hits)| hits)
-            .filter(|h| h.line == index)
+            .filter(|h| h.line == index && !h.range.is_empty())
             .map(|h| h.range.clone())
             .collect();
         ranges.extend(view.selected_range(index));

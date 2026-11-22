@@ -282,6 +282,30 @@ fn search_should_mark_matches_and_esc_clear_them() {
 }
 
 #[test]
+fn search_should_find_headings_drawn_as_images() {
+    let mut doc = text_doc(&["x"; 100]);
+    doc.lines[10].text = "Images in quotes".into();
+    for line in [40, 41] {
+        doc.lines[line].text = "\u{10EEEE}".into();
+        doc.lines[line].image = Some(ImageRow {
+            id: 7,
+            row: (line - 40) as u32,
+            cols: 6,
+            visible: 6,
+            prefix_len: 0,
+        });
+    }
+    doc.headings.push(heading(40, "Images"));
+    let mut p = pager_with(doc, 11);
+    press(&mut p, b"/images\r");
+    assert_eq!(p.hit_counter().as_deref(), Some("/images 1/2"));
+    press(&mut p, b"n");
+    assert_eq!(p.view().top, 40);
+    assert_eq!(p.hit_counter().as_deref(), Some("/images 2/2"));
+    assert!(p.marked_ranges(40).is_empty());
+}
+
+#[test]
 fn brackets_should_move_between_headings() {
     let mut doc = text_doc(&["x"; 100]);
     doc.headings = vec![heading(10, "a"), heading(40, "b")];

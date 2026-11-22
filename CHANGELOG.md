@@ -5,6 +5,10 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+### Fixed
+
+- **Search finds H1–H3 headings.** They are drawn as images, so `/` skipped them; now it moves to a heading that matches and counts it, without reversing its picture.
+
 ## [0.1.5] - 2026-11-22
 
 ### New
