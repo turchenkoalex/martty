@@ -6,6 +6,7 @@ use unicode_width::UnicodeWidthStr;
 use super::draw::truncate;
 use super::keys::Key;
 use super::{Action, Pager};
+use crate::help;
 
 pub(super) enum Overlay {
     Help,
@@ -16,33 +17,6 @@ pub(super) enum Overlay {
         top: usize,
     },
 }
-
-const HELP: &[(&str, &str)] = &[
-    ("j k ↑ ↓", "line down / up"),
-    ("Space f b", "page down / up"),
-    ("d u", "half page down / up"),
-    ("g G", "top / bottom"),
-    ("[ ]", "previous / next heading"),
-    ("o t", "table of contents"),
-    ("/ n N", "search, next / previous match, Esc clears"),
-    ("Tab ⇧Tab", "next / previous link on screen"),
-    ("Enter", "open the selected link"),
-    ("⌫ H", "back from an opened file or diagram"),
-    ("z", "diagram on screen full screen; z Space Esc close it"),
-    ("← →", "full screen: previous / next diagram"),
-    ("+ - 0", "zoom images and diagrams, reset"),
-    (
-        "h l ← →",
-        "pan wide images, code and tables (h l in a diagram)",
-    ),
-    ("w", "wrap wide code and tables, or pan them"),
-    ("y", "copy the code block on screen"),
-    ("c C", "copy the screen / document as plain text"),
-    ("m<a-z>", "set a mark"),
-    ("'<a-z> ''", "go to a mark / back to before the last jump"),
-    ("F", "follow changes to the file"),
-    ("q", "quit"),
-];
 
 impl Pager<'_> {
     /// Opens the table of contents at the section the top line is in.
@@ -113,13 +87,11 @@ impl Pager<'_> {
         match overlay {
             Overlay::Help => {
                 rows.push(" \x1b[1mKeys\x1b[0m".to_owned());
-                let key_width = HELP
-                    .iter()
-                    .map(|(k, _)| k.chars().count())
-                    .max()
-                    .unwrap_or(0);
-                for (keys, what) in HELP {
-                    let pad = key_width - keys.chars().count();
+                // The same keys as `--help`, without the topics, to fit the screen.
+                let keys = || help::KEYS.iter().flat_map(|(_, keys)| keys.iter());
+                let key_width = keys().map(|(k, _)| k.width()).max().unwrap_or(0);
+                for (keys, what) in keys() {
+                    let pad = key_width - keys.width();
                     let line = format!("  {keys}{:pad$}  {what}", "");
                     rows.push(truncate(&line, cols));
                 }

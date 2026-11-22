@@ -1,7 +1,7 @@
 //! martty — a tiny Markdown renderer tuned for Ghostty.
 //!
 //! Usage: `martty [-p|-P] [-w] [--width N] [FILE]` (reads stdin when FILE is
-//! absent or `-`). Output taller than the screen opens a `less`-like pager;
+//! absent or `-`; with neither, prints the help from `help.rs`). Output taller than the screen opens a `less`-like pager;
 //! `-p` forces it, `-P` disables it. `-w` opens the pager and follows changes
 //! to FILE. `--width` lays text out for N columns instead of the terminal
 //! width. `--remote` (or `MARTTY_REMOTE=1`) loads https images; it is off
@@ -13,6 +13,7 @@
 mod cache;
 mod diacritics;
 mod heading;
+mod help;
 mod kitty;
 mod math;
 mod mermaid;
@@ -35,9 +36,7 @@ use render::{Config, Diagrams, Document, HeadingImages, Images, MathImages};
 use style::Color;
 use term::{Caps, Rgb, Size, Theme, luma, mix};
 
-const USAGE: &str =
-    "usage: martty [-p|--pager] [-P|--no-pager] [-w|--follow] [--remote] [--width N] [FILE]
-       martty -V|--version";
+const USAGE: &str = "usage: martty [options] [FILE]; martty --help lists them";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Paging {
@@ -70,6 +69,12 @@ fn main() -> ExitCode {
 
 fn run() -> io::Result<()> {
     let args = parse_args()?;
+    // Nothing to read: no file, and stdin is the keyboard.
+    let no_file = args.file.as_deref().is_none_or(|f| f == Path::new("-"));
+    if no_file && io::stdin().is_terminal() {
+        print_help();
+        return Ok(());
+    }
     if args.remote {
         remote::enable();
     }
@@ -202,7 +207,7 @@ fn parse_args() -> io::Result<Args> {
             Some("-w" | "--follow") => args.follow = true,
             Some("--remote") => args.remote = true,
             Some("-h" | "--help") => {
-                println!("{USAGE}");
+                print_help();
                 std::process::exit(0);
             }
             // The release workflow checks that the tag matches this version.
@@ -220,6 +225,12 @@ fn parse_args() -> io::Result<Args> {
         }
     }
     Ok(args)
+}
+
+/// Styled for a terminal, plain in a pipe or under `MARTTY_NO_COLOR`.
+fn print_help() {
+    let color = std::env::var_os("MARTTY_NO_COLOR").is_none_or(|v| v != "1");
+    print!("{}", help::text(color && io::stdout().is_terminal()));
 }
 
 fn parse_width(value: Option<&str>) -> io::Result<usize> {
@@ -244,7 +255,6 @@ fn read_input(file: Option<&Path>) -> io::Result<(String, PathBuf)> {
                 .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
             Ok((text, dir))
         }
-        _ if io::stdin().is_terminal() => Err(io::Error::new(io::ErrorKind::InvalidInput, USAGE)),
         _ => {
             let mut buf = String::new();
             io::stdin().read_to_string(&mut buf)?;

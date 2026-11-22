@@ -32,6 +32,7 @@ output, say what to look at in `demo.md` instead of claiming it looks right.
 ```
 src/
 ├── main.rs        # args, reading input, choosing between stdout and the pager
+├── help.rs        # `--help` and the pager keys it shares with the `?` screen
 ├── render/        # pulldown-cmark events → lines of styled text
 │   ├── mod.rs     # Config, `render`, event dispatch
 │   ├── document.rs # rendered Document, lines, image rows for panning

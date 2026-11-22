@@ -124,12 +124,10 @@ martty -p short.md          # always open the pager
 martty -P long.md | head    # never open the pager
 martty --width 72 notes.md  # lay out for 72 columns
 martty -w README.md         # reload whenever README.md is saved
+martty --help               # options, environment and pager keys
 ```
 
-```
-usage: martty [-p|--pager] [-P|--no-pager] [-w|--follow] [--remote] [--width N] [FILE]
-       martty -V|--version
-```
+Run with no file and nothing on stdin, martty prints the same help.
 
 | Flag | Meaning |
 |---|---|
