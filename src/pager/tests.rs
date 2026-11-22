@@ -122,22 +122,22 @@ fn draw_should_erase_rows_before_drawing_them() {
 }
 
 #[test]
-fn draw_should_put_percent_at_right_edge_of_status() {
+fn draw_should_put_position_at_right_edge_of_status() {
     let mut frame = String::new();
     pager(100, 11).draw(&mut frame);
-    assert!(frame.contains(" 10% \x1b[0m"), "{frame:?}");
+    assert!(frame.contains(" 1-10/100  10% \x1b[0m"), "{frame:?}");
     let status = frame.rsplit("\x1b[7m").next().unwrap_or_default();
     let status = status.strip_suffix("\x1b[0m\x1b[?25l\x1b[?2026l");
     assert_eq!(status.map(UnicodeWidthStr::width), Some(80), "{frame:?}");
 }
 
 #[test]
-fn draw_should_keep_percent_when_status_is_truncated() {
+fn draw_should_keep_position_when_status_is_truncated() {
     let mut p = pager(100, 11);
     p.size.cols = 20;
     let mut frame = String::new();
     p.draw(&mut frame);
-    assert!(frame.contains(" 10% \x1b[0m"), "{frame:?}");
+    assert!(frame.contains(" 1-10/100  10% \x1b[0m"), "{frame:?}");
 }
 
 fn link_line(url: &str, text: &str) -> String {

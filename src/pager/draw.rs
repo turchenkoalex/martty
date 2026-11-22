@@ -57,10 +57,10 @@ impl Pager<'_> {
         }
 
         // Padded to the full width, so the reversed bar spans the screen.
-        // The percentage sits at the right edge; the left part gives way
-        // to it on a narrow screen.
+        // The position sits at the right edge; the left part gives way to
+        // it on a narrow screen.
         let row = self.size.rows.max(1);
-        let right = self.percent().filter(|p| p.width() < self.size.cols);
+        let right = self.position().filter(|p| p.width() < self.size.cols);
         let right_width = right.as_deref().map_or(0, UnicodeWidthStr::width);
         let status = truncate(&self.status(), self.size.cols - right_width);
         let used = status.width();
@@ -80,10 +80,10 @@ impl Pager<'_> {
         out.push_str("\x1b[?2026l");
     }
 
-    /// How far through the document the screen's last line is, as ` 77% `,
-    /// for the right end of the status line. None while a prompt or overlay
-    /// takes the line, and for a full-screen diagram.
-    pub(super) fn percent(&self) -> Option<String> {
+    /// The lines on screen and how far through the document the last one
+    /// is, as ` 1-24/31  77% `, for the right end of the status line. None
+    /// while a prompt or overlay takes the line, and for a full-screen diagram.
+    pub(super) fn position(&self) -> Option<String> {
         let view = self.view();
         if self.prompt.is_some() || self.overlay.is_some() || view.is_diagram() {
             return None;
@@ -91,7 +91,8 @@ impl Pager<'_> {
         let total = view.total();
         let last = (view.top + self.view_rows()).min(total);
         let pct = (last * 100).checked_div(total).unwrap_or(100);
-        Some(format!(" {pct}% "))
+        let first = (view.top + 1).min(total);
+        Some(format!(" {first}-{last}/{total}  {pct}% "))
     }
 
     pub(super) fn status(&self) -> String {
@@ -154,14 +155,7 @@ impl Pager<'_> {
         } else {
             ""
         };
-        let total = view.total();
-        let last = (view.top + self.view_rows()).min(total);
-        format!(
-            " {title}  {}-{}/{}{extra}  · q quit{back} · / search · o contents · ? help",
-            (view.top + 1).min(total),
-            last,
-            total
-        )
+        format!(" {title}{extra}  · q quit{back} · / search · o contents · ? help")
     }
 }
 
