@@ -66,6 +66,12 @@ fn main() {
 >
 > Even across *paragraphs*.
 
+> [!NOTE]
+> GitHub alerts get a colored bar and a title.
+
+> [!WARNING]
+> Five kinds: note, tip, important, warning and caution.
+
 | Name   | Kind     | Size |
 |--------|:--------:|-----:|
 | martty  | binary   |  1 MB |

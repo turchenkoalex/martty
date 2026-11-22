@@ -37,6 +37,7 @@ of asterisks.
 | Links | Clickable through OSC 8 |
 | Lists | Nested, ordered, and task lists `- [x]` |
 | Block quotes | Drawn with a left bar, including images inside quotes |
+| Alerts | GitHub `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` with a colored bar and title |
 | Code blocks | On a background derived from your theme |
 | Tables | Column alignment (`:---:`, `---:`) |
 | Footnotes | `[^1]` style |
@@ -179,8 +180,8 @@ cargo clippy
 cargo fmt
 ```
 
-See [ROADMAP.md](ROADMAP.md) for planned work, in Russian: syntax highlighting, GitHub
-alerts, more image formats, link navigation, table of contents, watch mode and more.
+See [ROADMAP.md](ROADMAP.md) for planned work, in Russian: syntax highlighting, more
+image formats, link navigation, table of contents, watch mode and more.
 
 ## Acknowledgements
 

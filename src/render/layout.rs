@@ -1,9 +1,11 @@
 use std::mem;
 
+use pulldown_cmark::BlockQuoteKind;
+
 use super::Renderer;
 use super::span::{Span, spans_width, write_span};
 use super::wrap::wrap;
-use crate::style::Style;
+use crate::style::{Color, Style};
 
 /// A block quote or list item: what to print on its first line and on the rest.
 pub(super) struct Container {
@@ -32,6 +34,33 @@ impl Container {
 }
 
 impl Renderer<'_> {
+    /// A block quote, or a GitHub alert (`> [!NOTE]`): a bar in the alert's
+    /// color and a title line with its icon.
+    pub(super) fn start_quote(&mut self, kind: Option<BlockQuoteKind>) {
+        self.open_block();
+        let Some(kind) = kind else {
+            let bar = Span::new("▎ ", Style::fg(Color::Ansi(8)));
+            self.containers.push(Container::repeating(vec![bar]));
+            return;
+        };
+        // Text-presentation symbols, one cell wide, so they take the color.
+        let (icon, title, color) = match kind {
+            BlockQuoteKind::Note => ("ⓘ", "Note", 4),
+            BlockQuoteKind::Tip => ("✦", "Tip", 2),
+            BlockQuoteKind::Important => ("‼", "Important", 5),
+            BlockQuoteKind::Warning => ("⚠", "Warning", 3),
+            BlockQuoteKind::Caution => ("⊘", "Caution", 1),
+        };
+        let color = Color::Ansi(color);
+        let bar = Span::new("▎ ", Style::fg(color));
+        self.containers.push(Container::repeating(vec![bar]));
+        let style = Style {
+            bold: true,
+            ..Style::fg(color)
+        };
+        self.emit_line(&[Span::new(format!("{icon} {title}"), style)]);
+    }
+
     pub(super) fn open_block(&mut self) {
         self.flush_inline();
         if self.pending_blank && self.wrote_any {

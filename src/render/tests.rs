@@ -173,3 +173,11 @@ fn render_should_show_h4_as_text_without_hashes() {
 fn render_should_prefix_quote_lines() {
     assert_eq!(render_plain("> a\n>\n> b"), "▎ a\n▎\n▎ b\n");
 }
+
+#[test]
+fn render_should_draw_alert_title_inside_quote() {
+    assert_eq!(
+        render_plain("> [!WARNING]\n> Be careful"),
+        "▎ ⚠ Warning\n▎ Be careful\n"
+    );
+}

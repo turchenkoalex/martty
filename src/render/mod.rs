@@ -80,7 +80,8 @@ pub fn render(markdown: &str, config: &Config) -> Document {
     let options = Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS
-        | Options::ENABLE_FOOTNOTES;
+        | Options::ENABLE_FOOTNOTES
+        | Options::ENABLE_GFM;
     let mut renderer = Renderer::new(config);
     for event in Parser::new_ext(markdown, options) {
         renderer.event(event);
@@ -191,11 +192,7 @@ impl<'c> Renderer<'c> {
                 self.open_block();
                 self.heading = Some(level);
             }
-            Tag::BlockQuote(_) => {
-                self.open_block();
-                let bar = Span::new("▎ ", Style::fg(Color::Ansi(8)));
-                self.containers.push(Container::repeating(vec![bar]));
-            }
+            Tag::BlockQuote(kind) => self.start_quote(kind),
             Tag::CodeBlock(kind) => {
                 self.open_block();
                 let lang = match kind {
