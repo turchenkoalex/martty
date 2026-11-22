@@ -70,6 +70,8 @@ pub struct Diagrams {
     pub zoom: f32,
     /// Cap on diagram text size relative to terminal text at zoom 1.
     pub max_upscale: f32,
+    /// Centre diagrams narrower than the available width.
+    pub center: bool,
 }
 
 pub struct HeadingImages {

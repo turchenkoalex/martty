@@ -32,18 +32,20 @@ impl Renderer<'_> {
         };
         let max_cols = u32::try_from(self.avail()).unwrap_or(u32::MAX);
         let (cols, rows) = kitty::fit(px, ctx.cell, max_cols, ctx.max_rows);
-        self.place(cols, rows, |out, id| {
+        self.place(cols, rows, 0, |out, id| {
             kitty::write_png(out, id, &data, cols, rows);
         });
         true
     }
 
     /// Uploads an image (via `transmit`, into the preamble) and emits its
-    /// placeholder rows as regular lines, after any container prefixes.
+    /// placeholder rows as regular lines, after any container prefixes and
+    /// `indent` cells of space.
     pub(super) fn place(
         &mut self,
         cols: u32,
         rows: u32,
+        indent: usize,
         transmit: impl FnOnce(&mut String, u32),
     ) -> u32 {
         let n = u32::try_from(self.image_ids.len()).unwrap_or(0);
@@ -52,10 +54,12 @@ impl Renderer<'_> {
         transmit(&mut self.preamble, id);
         let (r, g, b) = kitty::id_color(id);
         let style = Style::fg(Color::Rgb(r, g, b));
-        let visible = cols.min(u32::try_from(self.avail()).unwrap_or(u32::MAX));
+        let avail = u32::try_from(self.avail().saturating_sub(indent)).unwrap_or(u32::MAX);
+        let visible = cols.min(avail);
         for row in 0..rows.min(kitty::MAX_ROWS) {
             let start = self.out.len();
             self.write_prefix();
+            self.out.extend(std::iter::repeat_n(' ', indent));
             let prefix_len = self.out.len() - start;
             let cells = Span::new(kitty::placeholder_row(row, 0, visible), style.clone());
             write_span(&mut self.out, &cells, None);
@@ -82,7 +86,9 @@ impl Renderer<'_> {
         let view = (u32::try_from(self.avail()).unwrap_or(u32::MAX), d.max_rows);
         match mermaid::render(source, &d.palette, d.cell, view, d.zoom, d.max_upscale) {
             Ok(r) => {
-                let id = self.place(r.cols, r.rows, |out, id| {
+                let spare = usize::try_from(view.0.saturating_sub(r.cols)).unwrap_or(0);
+                let indent = if d.center { spare / 2 } else { 0 };
+                let id = self.place(r.cols, r.rows, indent, |out, id| {
                     kitty::write_rgba(out, id, &r.rgba, (r.width, r.height), r.cols, r.rows);
                 });
                 self.diagrams.push((id, source.to_owned()));
@@ -128,7 +134,7 @@ impl Renderer<'_> {
         let max_cols = u32::try_from(avail).unwrap_or(u32::MAX);
         for b in bitmaps {
             let cols = b.cols.min(max_cols);
-            self.place(cols, ROWS, |out, id| {
+            self.place(cols, ROWS, 0, |out, id| {
                 kitty::write_rgba(out, id, &b.rgba, (b.width, b.height), cols, ROWS);
             });
         }

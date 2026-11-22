@@ -172,12 +172,20 @@ fn config(
             accent: caps.palette[4].unwrap_or(fg),
         },
         cell,
-        // At zoom 1 a diagram fits the screen above the pager status line.
-        max_rows: u32::try_from(size.rows.saturating_sub(1))
-            .unwrap_or(u32::MAX)
-            .clamp(1, kitty::MAX_ROWS),
+        // Full screen, a diagram at zoom 1 fills the screen above the pager
+        // status line. In the document it keeps the terminal's text size and
+        // the image height cap; a click opens it larger.
+        max_rows: if fullscreen {
+            u32::try_from(size.rows.saturating_sub(1))
+                .unwrap_or(u32::MAX)
+                .clamp(1, kitty::MAX_ROWS)
+        } else {
+            max_rows
+        },
         zoom,
-        max_upscale: if fullscreen { f32::INFINITY } else { 2.0 },
+        max_upscale: if fullscreen { f32::INFINITY } else { 1.0 },
+        // The pager centres a full-screen diagram itself.
+        center: !fullscreen,
     });
     let images = cell.map(|cell| Images {
         cell,

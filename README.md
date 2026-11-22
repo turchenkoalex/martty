@@ -43,7 +43,7 @@ of asterisks.
 | Footnotes | `[^1]` style |
 | Definition lists | `Term` followed by `: definition` lines |
 | Images | Local PNG; a missing image falls back to its alt text |
-| Mermaid | ` ```mermaid ` blocks are rendered as diagrams |
+| Mermaid | ` ```mermaid ` blocks are rendered as diagrams, centered, with text at the terminal's size; click one to open it full screen |
 | Rules | `---` |
 | Emoji | Common GitHub shortcodes such as `:rocket:` and `:+1:` |
 | HTML | `<br>`, `<kbd>`, `<sub>`/`<sup>`, `<details>`/`<summary>` (expanded), `<b>`, `<i>`, `<mark>`, `<a>`, `<img>`; other tags are dropped and their text kept, comments hidden |

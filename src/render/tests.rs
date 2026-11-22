@@ -250,3 +250,34 @@ fn render_should_highlight_marked_text_only_in_pairs() {
     assert_eq!(strip_ansi(&out), "a b c == d\n");
     assert!(out.contains("\x1b[0;38;5;0;48;5;3mb"), "{out:?}");
 }
+
+fn diagram_indent(center: bool) -> Option<usize> {
+    let cfg = Config {
+        width: 200,
+        diagrams: Some(Diagrams {
+            palette: mermaid::Palette {
+                bg: (0, 0, 0),
+                fg: (255, 255, 255),
+                panel: (30, 30, 30),
+                accent: (0, 0, 255),
+            },
+            cell: (10, 20),
+            max_rows: 20,
+            zoom: 1.0,
+            max_upscale: 1.0,
+            center,
+        }),
+        ..images_config()
+    };
+    let doc = super::render("```mermaid\nflowchart LR\n  A --> B\n```", &cfg);
+    let row = doc.lines.iter().find_map(|l| l.image)?;
+    assert!(row.cols < 200, "a small diagram should not fill the width");
+    Some(row.prefix_len)
+}
+
+#[test]
+fn render_should_center_small_diagrams_when_asked() {
+    let centered = diagram_indent(true).unwrap_or_default();
+    assert!(centered > 0);
+    assert_eq!(diagram_indent(false), Some(0));
+}
