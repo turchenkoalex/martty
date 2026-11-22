@@ -5,6 +5,8 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+## [0.1.7] - 2026-11-22
+
 ### Changed
 
 - **Headings are all one color.** Every level is drawn in the blue of your theme; H1 was magenta and H3–H6 had colors of their own. Levels still differ by size and underline.
@@ -105,6 +107,7 @@ The first release of martty, a Markdown viewer built for [Ghostty](https://ghost
 - **A `less`-style pager:** search with highlighted matches, a table of contents, marks, following links (relative `.md` files open in the pager), copying as plain text over OSC 52, following a file as you edit it (`-w`), live re-layout on resize.
 - **Fast on long documents:** images, diagrams and headings are drawn only as they come into view, on all cores, and kept for the session.
 
+[0.1.7]: https://github.com/turchenkoalex/martty/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/turchenkoalex/martty/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/turchenkoalex/martty/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/turchenkoalex/martty/compare/v0.1.3...v0.1.4
