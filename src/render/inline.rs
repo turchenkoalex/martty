@@ -1,3 +1,4 @@
+use std::mem;
 use std::rc::Rc;
 
 use super::images::PendingImage;
@@ -29,7 +30,37 @@ impl Renderer<'_> {
         self.styles.push(style);
     }
 
+    /// Text from the document: `==text==` is highlighted. Only pairs within
+    /// one text event count, and the marked text can't start or end with a
+    /// space, so `a == b` stays as it is.
+    pub(super) fn push_prose(&mut self, text: &str) {
+        let mut parts = text.split("==");
+        let mut plain = parts.next().unwrap_or_default().to_owned();
+        let rest: Vec<&str> = parts.collect();
+        for pair in rest.chunks(2) {
+            match pair {
+                [inner, after] if !inner.is_empty() && inner.trim() == *inner => {
+                    self.push_text(&mem::take(&mut plain));
+                    let mut style = self.style();
+                    mark_style(&mut style);
+                    self.inline.push(Span::new(*inner, style));
+                    plain.push_str(after);
+                }
+                _ => {
+                    for part in pair {
+                        plain.push_str("==");
+                        plain.push_str(part);
+                    }
+                }
+            }
+        }
+        self.push_text(&plain);
+    }
+
     pub(super) fn push_text(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
         let style = self.style();
         self.inline.push(Span::new(text, style));
     }

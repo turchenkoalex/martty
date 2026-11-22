@@ -85,6 +85,14 @@ fn main() {
 
 ---
 
+#### Definitions
+
+martty
+: A Markdown viewer for Ghostty, with ==highlighted text== too.
+
+Ghostty
+: A fast, native terminal emulator.
+
 #### HTML
 
 Press <kbd>Ctrl</kbd>+<kbd>C</kbd> to quit. Water is H<sub>2</sub>O, area is r<sup>2</sup>,<br>

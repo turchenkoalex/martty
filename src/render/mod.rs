@@ -94,7 +94,8 @@ pub fn render(markdown: &str, config: &Config) -> Document {
         | Options::ENABLE_FOOTNOTES
         | Options::ENABLE_GFM
         | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
-        | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS;
+        | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS
+        | Options::ENABLE_DEFINITION_LIST;
     let events: Vec<Event<'_>> = Parser::new_ext(markdown, options).collect();
     let mut renderer = Renderer::new(config);
     renderer.list_lengths = ordered_list_lengths(&events);
@@ -224,7 +225,7 @@ impl<'c> Renderer<'c> {
                 } else if let Some((_, meta)) = &mut self.metadata {
                     meta.push_str(&text);
                 } else {
-                    self.push_text(&text);
+                    self.push_prose(&text);
                 }
             }
             Event::Code(text) | Event::InlineMath(text) | Event::DisplayMath(text) => {
@@ -288,6 +289,16 @@ impl<'c> Renderer<'c> {
                 });
                 self.lists.push(list);
             }
+            Tag::DefinitionList => self.open_block(),
+            Tag::DefinitionListTitle => {
+                self.flush_inline();
+                self.push_style(|s| s.bold = true);
+            }
+            Tag::DefinitionListDefinition => {
+                self.flush_inline();
+                let indent = Span::new("  ", Style::default());
+                self.containers.push(Container::hanging(vec![indent]));
+            }
             Tag::Item => {
                 self.flush_inline();
                 let marker = self.next_marker();
@@ -348,6 +359,17 @@ impl<'c> Renderer<'c> {
                     self.pending_blank = true;
                 }
             }
+            TagEnd::DefinitionListTitle => {
+                self.flush_inline();
+                if self.styles.len() > 1 {
+                    self.styles.pop();
+                }
+            }
+            TagEnd::DefinitionListDefinition => {
+                self.flush_inline();
+                self.containers.pop();
+            }
+            TagEnd::DefinitionList => self.close_block(),
             TagEnd::Item => {
                 self.flush_inline();
                 self.containers.pop();

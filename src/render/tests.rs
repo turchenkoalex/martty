@@ -236,3 +236,17 @@ fn render_should_fall_back_to_html_img_alt() {
     let md = "<p><img src=\"nope.png\" alt=\"logo\"></p>";
     assert_eq!(strip_ansi(&render(md, &images_config())), "🖼 logo\n");
 }
+
+#[test]
+fn render_should_indent_definitions_under_bold_term() {
+    let md = "Term\n: one\n: two\n\nNext";
+    assert_eq!(render_plain(md), "Term\n  one\n  two\n\nNext\n");
+}
+
+#[test]
+fn render_should_highlight_marked_text_only_in_pairs() {
+    let cfg = images_config();
+    let out = render("a ==b== c == d", &cfg);
+    assert_eq!(strip_ansi(&out), "a b c == d\n");
+    assert!(out.contains("\x1b[0;38;5;0;48;5;3mb"), "{out:?}");
+}

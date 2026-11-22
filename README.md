@@ -33,7 +33,7 @@ of asterisks.
 | Element | Notes |
 |---|---|
 | Headings | H1–H3 drawn as large images, H4–H6 styled as text |
-| Emphasis | **bold**, *italic*, ~~strikethrough~~, `inline code` |
+| Emphasis | **bold**, *italic*, ~~strikethrough~~, `inline code`, `==highlight==` |
 | Links | Clickable through OSC 8 |
 | Lists | Nested, ordered (numbers aligned on the dot), and task lists `- [x]` |
 | Block quotes | Drawn with a left bar, including images inside quotes |
@@ -41,6 +41,7 @@ of asterisks.
 | Code blocks | On a background derived from your theme |
 | Tables | Column alignment (`:---:`, `---:`) |
 | Footnotes | `[^1]` style |
+| Definition lists | `Term` followed by `: definition` lines |
 | Images | Local PNG; a missing image falls back to its alt text |
 | Mermaid | ` ```mermaid ` blocks are rendered as diagrams |
 | Rules | `---` |
