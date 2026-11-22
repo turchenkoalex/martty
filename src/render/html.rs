@@ -77,9 +77,14 @@ impl Renderer<'_> {
             self.inline.clear();
             return;
         }
+        // Set aside while the blank line before the block goes out, images
+        // too: flushed alone they would come before it, and their alt text
+        // after them as a paragraph of its own.
         let spans = std::mem::take(&mut self.inline);
+        let images = std::mem::take(&mut self.images);
         self.open_block();
         self.inline = spans;
+        self.images = images;
         self.close_block();
     }
 

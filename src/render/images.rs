@@ -20,28 +20,31 @@ pub(super) struct PendingImage {
 }
 
 impl Renderer<'_> {
+    /// The image at `url`, read and recognized, with its cache key; `None`
+    /// when images are off or it can't be shown.
+    pub(super) fn load_image(&self, url: &str) -> Option<(Picture, u64)> {
+        self.cfg.images.as_ref()?;
+        load(&self.cfg.base_dir, url)
+    }
+
     /// Reserves rows (so container prefixes are drawn), then places the
-    /// image over them. Returns `false` when it can't be shown.
-    pub(super) fn emit_image(&mut self, url: &str) -> bool {
+    /// image over them, after a blank line when `gap` is set.
+    pub(super) fn emit_image(&mut self, (picture, source): (Picture, u64), gap: bool) {
         let cfg = self.cfg;
         let Some(ctx) = &cfg.images else {
-            return false;
-        };
-        let Some((picture, source)) = load(&cfg.base_dir, url) else {
-            return false;
+            return;
         };
         let max_cols = u32::try_from(self.avail()).unwrap_or(u32::MAX);
         let px = picture.pixels(css_px(ctx.cell));
         let (cols, rows) = kitty::fit(px, ctx.cell, max_cols, ctx.max_rows, ctx.zoom);
         let target = (cols * ctx.cell.0, rows * ctx.cell.1);
         let key = cache::key(("image", source, target, cols, rows));
-        self.place(
-            cols,
-            rows,
-            0,
-            Box::new(move || cache::transmit(key, || picture.encode(target)?.transmit(cols, rows))),
-        );
-        true
+        if gap {
+            self.blank_line();
+        }
+        let job =
+            Box::new(move || cache::transmit(key, || picture.encode(target)?.transmit(cols, rows)));
+        self.place(cols, rows, 0, job);
     }
 
     /// Emits an image's placeholder rows as regular lines, after any

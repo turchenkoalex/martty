@@ -118,7 +118,7 @@ fn images_config() -> Config {
 #[test]
 fn render_should_fall_back_to_alt_text_when_image_missing() {
     let out = strip_ansi(&render("![cat](cat.png)", &images_config()));
-    assert_eq!(out, "🖼 cat\n");
+    assert_eq!(out, "cat\n");
 }
 
 #[test]
@@ -270,7 +270,7 @@ fn render_should_close_unbalanced_html_at_block_end() {
 #[test]
 fn render_should_fall_back_to_html_img_alt() {
     let md = "<p><img src=\"nope.png\" alt=\"logo\"></p>";
-    assert_eq!(strip_ansi(&render(md, &images_config())), "🖼 logo\n");
+    assert_eq!(strip_ansi(&render(md, &images_config())), "logo\n");
 }
 
 #[test]
@@ -489,4 +489,44 @@ fn render_should_record_quote_prefix_length() {
     let line = &doc.lines[0];
     assert!(line.text[..line.prefix_len].contains('▎'));
     assert_eq!(strip_ansi(&line.text[line.prefix_len..]), "quoted");
+}
+
+#[test]
+fn render_should_name_missing_image_without_alt_by_file() {
+    let out = strip_ansi(&render("![](img/cat.png?v=2)", &images_config()));
+    assert_eq!(out, "cat.png\n");
+}
+
+/// `md` rendered with a 20×40 px PNG at `a.png`, images as `#` per row.
+fn render_with_png(md: &str) -> Vec<String> {
+    let dir = std::env::temp_dir().join(format!("martty-png-{}-{}", std::process::id(), md.len()));
+    std::fs::create_dir_all(&dir).ok();
+    let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+    png.extend_from_slice(&[0, 0, 0, 20, 0, 0, 0, 40]);
+    std::fs::write(dir.join("a.png"), &png).ok();
+    let cfg = Config {
+        base_dir: dir,
+        ..images_config()
+    };
+    let doc = super::render(md, &cfg);
+    std::fs::remove_dir_all(&cfg.base_dir).ok();
+    doc.lines
+        .iter()
+        .map(|l| match l.image {
+            Some(_) => strip_ansi(&l.text[..l.prefix_len]) + "#",
+            None => strip_ansi(&l.text),
+        })
+        .collect()
+}
+
+#[test]
+fn render_should_set_html_image_apart_without_its_alt() {
+    let lines = render_with_png("- text\n\n  <img src=\"a.png\" alt=\"mockup\">\n\n- next");
+    assert_eq!(lines, ["• text", "", "  #", "  #", "", "• next"]);
+}
+
+#[test]
+fn render_should_put_image_below_its_paragraph_text_without_alt() {
+    let lines = render_with_png("Some text ![mockup](a.png) and more.");
+    assert_eq!(lines, ["Some text and more.", "", "#", "#"]);
 }

@@ -75,37 +75,40 @@ impl Renderer<'_> {
         self.pending_blank = true;
     }
 
+    /// Writes the collected inline text, then the images in it below. The
+    /// alt text of an image that is shown is left out of the text; that of
+    /// one that can't be shown stays in its place.
     pub(super) fn flush_inline(&mut self) {
         let spans = mem::take(&mut self.inline);
         let images = mem::take(&mut self.images);
-        let in_alt = |i: usize| images.iter().any(|im| im.alt.contains(&i));
-        // A paragraph that is just images replaces its alt text with them.
-        let only_images = self.cfg.images.is_some()
-            && !images.is_empty()
-            && spans
+        let loaded: Vec<_> = images.iter().map(|im| self.load_image(&im.url)).collect();
+        let shown_alt = |i: usize| {
+            images
                 .iter()
-                .enumerate()
-                .all(|(i, s)| in_alt(i) || s.text.trim().is_empty());
+                .zip(&loaded)
+                .any(|(im, l)| l.is_some() && im.alt.contains(&i))
+        };
+        let text: Vec<Span> = spans
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| !shown_alt(i))
+            .map(|(_, s)| s.clone())
+            .collect();
 
-        if !only_images && !spans.iter().all(|s| s.text.trim().is_empty()) {
-            for line in wrap(&spans, self.avail()) {
+        // An image in a paragraph with text goes below it, a blank line apart.
+        let mut gap = !text.iter().all(|s| s.text.trim().is_empty());
+        if gap {
+            for line in wrap(&text, self.avail()) {
                 self.emit_line(&line);
             }
         }
-        for image in &images {
+        for (image, picture) in images.iter().zip(loaded) {
+            let Some(picture) = picture else { continue };
             let start = self.line_no;
-            let shown = self.cfg.images.is_some() && self.emit_image(&image.url);
-            if shown {
-                let alt = spans.get(image.alt.clone()).unwrap_or_default();
-                let alt: String = alt.iter().map(|s| s.text.as_str()).collect();
-                self.add_source(start, alt.trim(), false);
-            }
-            if only_images && !shown {
-                let alt = spans.get(image.alt.clone()).unwrap_or_default();
-                for line in wrap(alt, self.avail()) {
-                    self.emit_line(&line);
-                }
-            }
+            self.emit_image(picture, mem::take(&mut gap));
+            let alt = spans.get(image.alt.clone()).unwrap_or_default();
+            let alt: String = alt.iter().map(|s| s.text.as_str()).collect();
+            self.add_source(start, alt.trim(), false);
         }
     }
 

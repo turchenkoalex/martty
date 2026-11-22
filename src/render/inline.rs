@@ -67,7 +67,8 @@ impl Renderer<'_> {
         self.inline.push(Span::new(text, style));
     }
 
-    /// Opens an image: its alt text follows, shown when the image can't be.
+    /// Opens an image: its alt text follows, shown dimmed when the image
+    /// can't be.
     pub(super) fn start_image(&mut self, url: &str) {
         let start = self.inline.len();
         self.images.push(PendingImage {
@@ -77,13 +78,22 @@ impl Renderer<'_> {
         let target = super::links::resolve(&self.cfg.base_dir, url);
         self.push_style(|s| {
             s.link = Some(Rc::from(target));
-            s.fg = Some(Color::Ansi(5));
             s.italic = true;
+            s.dim = true;
         });
-        self.push_text("🖼 ");
     }
 
+    /// Closes the alt text. Without any, the file name stands in for it.
     pub(super) fn end_image_alt(&mut self) {
+        let Some(image) = self.images.last() else {
+            return;
+        };
+        let alt = &self.inline[image.alt.start..];
+        if alt.iter().all(|s| s.text.trim().is_empty()) {
+            let url = image.url.split(['?', '#']).next().unwrap_or_default();
+            let name = url.rsplit('/').next().unwrap_or(url).to_owned();
+            self.push_text(&name);
+        }
         let end = self.inline.len();
         if let Some(image) = self.images.last_mut() {
             image.alt.end = end;
