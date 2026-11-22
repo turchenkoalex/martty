@@ -70,7 +70,7 @@ impl Pager<'_> {
         }
         let fullscreen = self.view().is_diagram();
         match key {
-            Key::Char('q' | 'Q' | 'v' | ' ') | Key::Esc if fullscreen => Action::Close,
+            Key::Char('q' | 'Q' | 'o' | ' ') | Key::Esc if fullscreen => Action::Close,
             Key::Left | Key::Right if fullscreen => Action::Switch(key == Key::Right),
             Key::Esc if self.view().selected.is_some() => {
                 self.view_mut().selected = None;
@@ -89,7 +89,7 @@ impl Pager<'_> {
                 let zoom = self.view().zoom;
                 self.zoom_by(1.0 / zoom)
             }
-            Key::Char('v') if !fullscreen => match self.visible_diagram() {
+            Key::Char('o') if !fullscreen => match self.visible_diagram() {
                 Some(index) => Action::Open(index),
                 None => {
                     self.message = Some("No diagram on screen".into());
@@ -105,6 +105,8 @@ impl Pager<'_> {
                 });
                 Action::Reflow
             }
+            // `v` edits the file, as in less.
+            Key::Char('v') => Action::Edit,
             Key::Char('y') => self.copy_code().map_or(Action::Continue, Action::Copy),
             Key::Char('c') => Action::Copy(self.copy_screen(false)),
             Key::Char('C') => Action::Copy(self.copy_screen(true)),

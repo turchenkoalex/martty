@@ -530,3 +530,12 @@ fn render_should_put_image_below_its_paragraph_text_without_alt() {
     let lines = render_with_png("Some text ![mockup](a.png) and more.");
     assert_eq!(lines, ["Some text and more.", "", "#", "#"]);
 }
+
+#[test]
+fn heading_lines_should_match_rendered_headings() {
+    let md =
+        "---\ntitle: x\n---\n\n# One\n\n```\n# not a heading\n```\n\nTwo\n---\n\n> ### Three\n";
+    let doc = super::render(md, &plain_config());
+    assert_eq!(heading_lines(md), [5, 11, 14]);
+    assert_eq!(doc.headings.len(), 3);
+}

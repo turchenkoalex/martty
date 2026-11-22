@@ -39,7 +39,7 @@ pub const KEYS: &[(&str, &[(&str, &str)])] = &[
                 "pan wide images, code and tables (h l in a diagram)",
             ),
             ("w", "wrap wide code and tables, or pan them"),
-            ("v", "diagram on screen full screen; v Space Esc close it"),
+            ("o", "diagram on screen full screen; o Space Esc close it"),
             ("← →", "full screen: previous / next diagram"),
         ],
     ),
@@ -52,7 +52,11 @@ pub const KEYS: &[(&str, &[(&str, &str)])] = &[
     ),
     (
         "Other",
-        &[("F", "follow changes to the file"), ("q", "quit")],
+        &[
+            ("v", "edit the file in $VISUAL or $EDITOR"),
+            ("F", "follow changes to the file"),
+            ("q", "quit"),
+        ],
     ),
 ];
 

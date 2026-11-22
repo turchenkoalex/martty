@@ -84,7 +84,7 @@ fn zoom_in_should_request_relayout() {
 #[test]
 fn v_should_open_visible_diagram() {
     let mut p = pager_with(diagram_doc(), 11);
-    assert_eq!(p.handle(Key::Char('v')), Action::Open(0));
+    assert_eq!(p.handle(Key::Char('o')), Action::Open(0));
 }
 
 #[test]
@@ -412,16 +412,16 @@ fn diagrams_doc() -> Document {
 #[test]
 fn fullscreen_diagram_should_close_on_v_and_space() {
     let mut p = pager_with(diagrams_doc(), 11);
-    p.apply(Key::Char('v'), &mut no_render).ok();
+    p.apply(Key::Char('o'), &mut no_render).ok();
     assert!(p.view().is_diagram());
-    assert_eq!(p.handle(Key::Char('v')), Action::Close);
+    assert_eq!(p.handle(Key::Char('o')), Action::Close);
     assert_eq!(p.handle(Key::Char(' ')), Action::Close);
 }
 
 #[test]
 fn arrows_should_switch_diagrams_and_scroll_document_to_them() {
     let mut p = pager_with(diagrams_doc(), 11);
-    p.apply(Key::Char('v'), &mut no_render).ok();
+    p.apply(Key::Char('o'), &mut no_render).ok();
     p.apply(Key::Right, &mut no_render).ok();
     p.apply(Key::Right, &mut no_render).ok();
     assert_eq!(p.views.len(), 2);

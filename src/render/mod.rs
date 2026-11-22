@@ -118,8 +118,8 @@ pub struct Images {
     pub zoom: f32,
 }
 
-pub fn render(markdown: &str, config: &Config) -> Document {
-    let options = Options::ENABLE_TABLES
+fn options() -> Options {
+    Options::ENABLE_TABLES
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS
         | Options::ENABLE_FOOTNOTES
@@ -127,7 +127,24 @@ pub fn render(markdown: &str, config: &Config) -> Document {
         | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
         | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS
         | Options::ENABLE_DEFINITION_LIST
-        | Options::ENABLE_MATH;
+        | Options::ENABLE_MATH
+}
+
+/// The source line (1-based) of every heading, in the order of
+/// [`Document::headings`], so a place in the pager maps back to the file.
+pub fn heading_lines(markdown: &str) -> Vec<usize> {
+    Parser::new_ext(markdown, options())
+        .into_offset_iter()
+        .filter(|(event, _)| matches!(event, Event::Start(Tag::Heading { .. })))
+        .map(|(_, range)| {
+            let before = markdown.get(..range.start).unwrap_or_default();
+            before.matches('\n').count() + 1
+        })
+        .collect()
+}
+
+pub fn render(markdown: &str, config: &Config) -> Document {
+    let options = options();
     let markdown = deflist::escape_false_markers(markdown, options);
     // An escape splits the text around it; merged back, a `:rocket:` right
     // after an escaped colon is still one piece for shortcode replacement.

@@ -299,7 +299,7 @@ fn config(
         // Full screen, a diagram at zoom 1 fills the screen above the pager
         // status line. In the document it fits the width only and keeps the
         // terminal's text size, however many rows that takes (a tall one is
-        // scrolled, not shrunk to unreadable text); `v` opens it whole.
+        // scrolled, not shrunk to unreadable text); `o` opens it whole.
         max_rows: if fullscreen {
             u32::try_from(size.rows.saturating_sub(1))
                 .unwrap_or(u32::MAX)

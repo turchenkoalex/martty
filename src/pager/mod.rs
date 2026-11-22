@@ -6,10 +6,13 @@
 //! Images are uploaded only as they come within a screen of the view.
 //!
 //! Views form a stack: the document, and on top of it optionally a single
-//! diagram opened full screen (`v`). `+`/`-` re-render
+//! diagram opened full screen (`o`). `+`/`-` re-render
 //! images and diagrams at another zoom; ones wider than the screen are panned with
 //! `h`/`l` by redrawing their placeholder rows from a later image column —
 //! the image itself is not re-sent.
+//!
+//! `v` leaves the alternate screen for the user's editor and lays the
+//! views out again when it exits.
 //!
 //! With following on (`-w`, `F`), the file is checked for changes on every
 //! wake-up and laid out again when it changes, keeping the place by content.
@@ -28,6 +31,7 @@
 
 mod copy;
 mod draw;
+mod editor;
 mod input;
 mod keys;
 mod links;
@@ -107,6 +111,8 @@ enum Action {
     /// Open a link target: `#anchor`, a Markdown file, or anything else
     /// through the system.
     Follow(String),
+    /// Open the file in the user's editor (`v`).
+    Edit,
 }
 
 /// Runs the pager until the user quits. `render` lays out the document, a
@@ -119,7 +125,7 @@ pub fn run(
     mut render: impl FnMut(Layout<'_>, Params) -> Document,
 ) -> io::Result<()> {
     let mut tty = OpenOptions::new().read(true).write(true).open("/dev/tty")?;
-    let _raw = RawMode::keys(tty.as_raw_fd())?;
+    let raw = RawMode::keys(tty.as_raw_fd())?;
     let mut pager = Pager::new(options.title, term::size(), doc);
     pager.file = options.file.map(Path::to_path_buf);
     pager.follow = options.follow && pager.file.is_some();
@@ -137,8 +143,12 @@ pub fn run(
             dirty = true;
             if key == keys::Key::ThemeChanged {
                 later.extend(pager.retheme(&mut tty, &mut render)?);
-            } else if pager.apply(key, &mut render)? == Action::Quit {
-                return Ok(());
+            } else {
+                match pager.apply(key, &mut render)? {
+                    Action::Quit => return Ok(()),
+                    Action::Edit => pager.edit(&raw, &mut render)?,
+                    _ => {}
+                }
             }
         }
         if !later.is_empty() {
@@ -272,7 +282,7 @@ impl<'a> Pager<'a> {
     ) -> io::Result<Action> {
         let action = self.handle(key);
         match &action {
-            Action::Continue | Action::Quit => {}
+            Action::Continue | Action::Quit | Action::Edit => {}
             Action::Relayout => self.relayout(self.views.len() - 1, render)?,
             Action::Reflow => {
                 for depth in 0..self.views.len() {

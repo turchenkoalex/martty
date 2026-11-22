@@ -321,6 +321,7 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 pub struct RawMode {
     fd: RawFd,
     saved: libc::termios,
+    raw: libc::termios,
 }
 
 impl RawMode {
@@ -353,8 +354,32 @@ impl RawMode {
         if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &raw) } != 0 {
             return Err(io::Error::last_os_error());
         }
-        Ok(Self { fd, saved })
+        Ok(Self { fd, saved, raw })
     }
+
+    /// Gives the terminal back its own mode until the guard drops, for a
+    /// program run in the foreground (an editor).
+    pub fn pause(&self) -> io::Result<Paused<'_>> {
+        set_termios(self.fd, &self.saved)?;
+        Ok(Paused(self))
+    }
+}
+
+/// Raw mode handed back for a while; see [`RawMode::pause`].
+pub struct Paused<'a>(&'a RawMode);
+
+impl Drop for Paused<'_> {
+    fn drop(&mut self) {
+        let _ = set_termios(self.0.fd, &self.0.raw);
+    }
+}
+
+fn set_termios(fd: RawFd, term: &libc::termios) -> io::Result<()> {
+    // SAFETY: `term` is a valid termios read from this terminal.
+    if unsafe { libc::tcsetattr(fd, libc::TCSANOW, term) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 impl Drop for RawMode {

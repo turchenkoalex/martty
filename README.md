@@ -190,13 +190,14 @@ The pager follows `less` conventions. `?` shows the keys in the pager.
 | `Tab` / `Shift-Tab` | Select the next / previous link, scrolling to it |
 | `Enter` | Open the selected link: `#heading` jumps to it, a relative `.md` file opens in the pager, anything else opens with `open` (`xdg-open` on Linux) |
 | `Backspace` `H` | Go back from an opened file or a full-screen diagram |
-| `v` | Open the diagram on screen full screen |
-| `v` `Space` `Esc` `q` | Close the full-screen diagram |
+| `o` | Open the diagram on screen full screen |
+| `o` `Space` `Esc` `q` | Close the full-screen diagram |
 | `←` / `→` | In a full-screen diagram: open the previous / next diagram of the document; going back lands on the one shown last |
 | `y` | Copy the code block on screen (or a diagram's Mermaid source) to the clipboard |
 | `c` / `C` | Copy the screen / the whole document as plain text |
 | `m` *letter* | Set a mark |
 | `'` *letter* / `''` | Go to a mark / back to where the last jump started |
+| `v` | Edit the file in `$VISUAL` or `$EDITOR` (`vi` when neither is set), then come back to the pager with your edits laid out. Vim, Neovim, Nano, Micro, Helix, Emacs, Zed, Sublime Text, VS Code and Cursor open at the section on screen |
 | `F` | Follow changes to the file, as `-w` does |
 | `?` | Show the keys |
 | `q` `Ctrl-C` | Quit |
@@ -222,6 +223,9 @@ settings start with `MARTTY_`:
 | `MARTTY_REMOTE` | `1` | Load `https://` images, as `--remote` does |
 | `MARTTY_TEXT_SIZING` | `0` / `1` | Disable or force OSC 66 text sizing for headings |
 | `MARTTY_NO_COLOR` | `1` | No colors: text keeps bold, italic and underline; images, diagrams and image headings are off, as with `MARTTY_IMAGES=0` |
+
+The pager's `v` key opens the file in `$VISUAL`, or `$EDITOR`, run through `sh` as git
+does, so the variable may hold arguments, as in `EDITOR="zed --wait"`.
 
 The pager also asks Ghostty to report theme switches (DEC 2031) and reads keys with the
 kitty keyboard protocol, so Esc and Alt combinations are never confused. Slow layouts,
