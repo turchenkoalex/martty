@@ -181,3 +181,17 @@ fn render_should_draw_alert_title_inside_quote() {
         "▎ ⚠ Warning\n▎ Be careful\n"
     );
 }
+
+#[test]
+fn render_should_align_yaml_front_matter() {
+    let md = "---\ntitle: \"Hi there\"\ntags: [a, b]\nauthor:\n  name: X\n---\n\nText";
+    assert_eq!(
+        render_plain(md),
+        "title   Hi there\ntags    [a, b]\nauthor\n  name: X\n\nText\n"
+    );
+}
+
+#[test]
+fn render_should_read_toml_front_matter() {
+    assert_eq!(render_plain("+++\nkey = 'v'\n+++\n"), "key  v\n");
+}

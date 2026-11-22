@@ -1,3 +1,9 @@
+---
+title: martty demo
+description: Every feature martty renders, on one page
+tags: [markdown, ghostty]
+---
+
 # martty
 
 A tiny **Markdown** renderer for *Ghostty*, with `inline code`,

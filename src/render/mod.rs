@@ -16,7 +16,9 @@ use std::mem;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{
+    CodeBlockKind, Event, HeadingLevel, MetadataBlockKind, Options, Parser, Tag, TagEnd,
+};
 
 use crate::heading::HeadingFont;
 use crate::mermaid;
@@ -81,7 +83,9 @@ pub fn render(markdown: &str, config: &Config) -> Document {
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS
         | Options::ENABLE_FOOTNOTES
-        | Options::ENABLE_GFM;
+        | Options::ENABLE_GFM
+        | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
+        | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS;
     let mut renderer = Renderer::new(config);
     for event in Parser::new_ext(markdown, options) {
         renderer.event(event);
@@ -105,6 +109,8 @@ struct Renderer<'c> {
     lists: Vec<Option<u64>>,
     heading: Option<HeadingLevel>,
     code: Option<CodeBlock>,
+    /// Front matter being collected, with its key/value separator.
+    metadata: Option<(char, String)>,
     table: Option<Table>,
     images: Vec<PendingImage>,
     pending_blank: bool,
@@ -127,6 +133,7 @@ impl<'c> Renderer<'c> {
             lists: Vec::new(),
             heading: None,
             code: None,
+            metadata: None,
             table: None,
             images: Vec::new(),
             pending_blank: false,
@@ -164,10 +171,15 @@ impl<'c> Renderer<'c> {
         match event {
             Event::Start(tag) => self.start(tag),
             Event::End(tag) => self.end(tag),
-            Event::Text(text) => match &mut self.code {
-                Some(code) => code.text.push_str(&text),
-                None => self.push_text(&text),
-            },
+            Event::Text(text) => {
+                if let Some(code) = &mut self.code {
+                    code.text.push_str(&text);
+                } else if let Some((_, meta)) = &mut self.metadata {
+                    meta.push_str(&text);
+                } else {
+                    self.push_text(&text);
+                }
+            }
             Event::Code(text) | Event::InlineMath(text) | Event::DisplayMath(text) => {
                 self.push_code(&text);
             }
@@ -205,6 +217,13 @@ impl<'c> Renderer<'c> {
                     lang,
                     text: String::new(),
                 });
+            }
+            Tag::MetadataBlock(kind) => {
+                let sep = match kind {
+                    MetadataBlockKind::YamlStyle => ':',
+                    MetadataBlockKind::PlusesStyle => '=',
+                };
+                self.metadata = Some((sep, String::new()));
             }
             Tag::List(start) => {
                 if self.lists.is_empty() {
@@ -274,6 +293,12 @@ impl<'c> Renderer<'c> {
             TagEnd::CodeBlock => {
                 if let Some(code) = self.code.take() {
                     self.render_code(&code);
+                }
+                self.pending_blank = true;
+            }
+            TagEnd::MetadataBlock(_) => {
+                if let Some((sep, text)) = self.metadata.take() {
+                    self.render_front_matter(sep, &text);
                 }
                 self.pending_blank = true;
             }

@@ -44,6 +44,7 @@ of asterisks.
 | Images | Local PNG; a missing image falls back to its alt text |
 | Mermaid | ` ```mermaid ` blocks are rendered as diagrams |
 | Rules | `---` |
+| Front matter | YAML (`---`) or TOML (`+++`), shown as dimmed `key  value` lines |
 
 ## Installation
 

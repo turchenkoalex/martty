@@ -4,6 +4,7 @@ use pulldown_cmark::{Alignment, HeadingLevel};
 use unicode_width::UnicodeWidthStr;
 
 use super::Renderer;
+use super::layout::Container;
 use super::span::{Span, spans_width, write_span};
 use super::wrap::{hard_wrap, wrap};
 use crate::style::{Color, Style, Underline};
@@ -119,6 +120,48 @@ impl Renderer<'_> {
         self.emit_line(&padded(String::new(), base.clone()));
     }
 
+    /// Front matter as aligned `key  value` lines, dimmed. `sep` is `:` for
+    /// YAML and `=` for TOML; nested or unparsed lines are shown as they are.
+    pub(super) fn render_front_matter(&mut self, sep: char, text: &str) {
+        self.open_block();
+        let entries: Vec<(Option<&str>, &str)> = text
+            .lines()
+            .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
+            .map(|line| match front_matter_entry(line, sep) {
+                Some((key, value)) => (Some(key), value),
+                None => (None, line),
+            })
+            .collect();
+        let key_width = entries
+            .iter()
+            .filter_map(|(k, _)| k.map(UnicodeWidthStr::width))
+            .max()
+            .unwrap_or(0);
+        let key_style = Style {
+            bold: true,
+            ..Style::dim()
+        };
+        for (key, value) in entries {
+            let label = match key {
+                Some(key) if value.is_empty() => {
+                    self.emit_line(&[Span::new(key, key_style.clone())]);
+                    continue;
+                }
+                Some(key) => Span::new(format!("{key:key_width$}  "), key_style.clone()),
+                None => {
+                    let indent = value.len() - value.trim_start().len();
+                    Span::new(&value[..indent], Style::default())
+                }
+            };
+            let value = vec![Span::new(value.trim_start(), Style::dim())];
+            self.containers.push(Container::hanging(vec![label]));
+            for line in wrap(&value, self.avail()) {
+                self.emit_line(&line);
+            }
+            self.containers.pop();
+        }
+    }
+
     pub(super) fn render_table(&mut self, table: &Table) {
         let cols = table.rows.iter().map(Vec::len).max().unwrap_or(0);
         if cols == 0 {
@@ -171,4 +214,22 @@ impl Renderer<'_> {
         }
         self.emit_line(&rule("└", "┴", "┘"));
     }
+}
+
+/// `key: value` (YAML) or `key = value` (TOML) at the top level, with
+/// surrounding quotes dropped from the value.
+fn front_matter_entry(line: &str, sep: char) -> Option<(&str, &str)> {
+    if line.starts_with([' ', '\t', '-', '[']) {
+        return None;
+    }
+    let (key, value) = line.split_once(sep)?;
+    let key = key.trim();
+    if key.is_empty() || key.contains(char::is_whitespace) {
+        return None;
+    }
+    let value = value.trim();
+    let unquoted = ['"', '\'']
+        .iter()
+        .find_map(|q| value.strip_prefix(*q)?.strip_suffix(*q));
+    Some((key, unquoted.unwrap_or(value)))
 }
