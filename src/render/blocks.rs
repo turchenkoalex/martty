@@ -4,9 +4,11 @@ use pulldown_cmark::{Alignment, HeadingLevel};
 use unicode_width::UnicodeWidthStr;
 
 use super::Renderer;
+#[cfg(feature = "highlight")]
+use super::highlight::highlight;
 use super::layout::Container;
 use super::span::{Span, spans_width, write_span};
-use super::wrap::{hard_wrap, wrap};
+use super::wrap::{hard_wrap_spans, wrap};
 use crate::style::{Color, Style, Underline};
 
 pub(super) struct CodeBlock {
@@ -21,6 +23,11 @@ pub(super) struct Table {
     pub(super) rows: Vec<Vec<Cell>>,
     pub(super) header_rows: usize,
     pub(super) row: Vec<Cell>,
+}
+
+#[cfg(not(feature = "highlight"))]
+fn highlight(_lang: &str, _text: &str) -> Option<Vec<Vec<Span>>> {
+    None
 }
 
 impl Renderer<'_> {
@@ -81,15 +88,24 @@ impl Renderer<'_> {
         }
         let avail = self.avail();
         let text = code.text.strip_suffix('\n').unwrap_or(&code.text);
+        let lines = highlight(&code.lang, text).unwrap_or_else(|| {
+            text.lines()
+                .map(|l| vec![Span::new(l.replace('\t', "    "), Style::default())])
+                .collect()
+        });
+        let chunks: Vec<Vec<Span>> = lines
+            .iter()
+            .flat_map(|line| hard_wrap_spans(line, avail.saturating_sub(2)))
+            .collect();
         let Some(bg) = self.cfg.code_bg else {
             let bar = Span::new("│ ", Style::fg(Color::Ansi(8)));
             if !code.lang.is_empty() {
                 self.emit_line(&[bar.clone(), Span::new(code.lang.as_str(), Style::dim())]);
             }
-            for raw in text.lines() {
-                for chunk in hard_wrap(&raw.replace('\t', "    "), avail.saturating_sub(2)) {
-                    self.emit_line(&[bar.clone(), Span::new(chunk, Style::default())]);
-                }
+            for chunk in chunks {
+                let mut line = vec![bar.clone()];
+                line.extend(chunk);
+                self.emit_line(&line);
             }
             return;
         };
@@ -112,10 +128,13 @@ impl Renderer<'_> {
             ..base.clone()
         };
         self.emit_line(&padded(code.lang.clone(), label));
-        for raw in text.lines() {
-            for chunk in hard_wrap(&raw.replace('\t', "    "), avail.saturating_sub(2)) {
-                self.emit_line(&padded(chunk, base.clone()));
-            }
+        for mut chunk in chunks {
+            let pad = avail.saturating_sub(spans_width(&chunk) + 1);
+            chunk.iter_mut().for_each(|s| s.style.bg = Some(bg));
+            let mut line = vec![Span::new(" ", base.clone())];
+            line.extend(chunk);
+            line.push(Span::new(" ".repeat(pad), base.clone()));
+            self.emit_line(&line);
         }
         self.emit_line(&padded(String::new(), base.clone()));
     }

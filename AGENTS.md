@@ -38,6 +38,7 @@ src/
 │   ├── layout.rs  # containers (quotes, list items), line prefixes, block spacing
 │   ├── inline.rs  # inline styles, code spans, list and task markers
 │   ├── blocks.rs  # headings, code blocks, tables, rules
+│   ├── highlight.rs # syntect scopes → palette colors (feature `highlight`)
 │   ├── images.rs  # images, diagrams and image headings placed via kitty
 │   ├── span.rs    # styled text spans and their SGR/OSC 8 output
 │   └── wrap.rs    # word wrapping by display width

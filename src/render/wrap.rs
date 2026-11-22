@@ -119,22 +119,34 @@ pub(super) fn wrap(spans: &[Span], width: usize) -> Vec<Vec<Span>> {
     lines
 }
 
-pub(super) fn hard_wrap(text: &str, width: usize) -> Vec<String> {
+/// Splits a line of spans by display width, keeping every space.
+pub(super) fn hard_wrap_spans(spans: &[Span], width: usize) -> Vec<Vec<Span>> {
     let width = width.max(1);
-    let mut out = vec![String::new()];
+    let mut lines = vec![Vec::new()];
     let mut used = 0;
-    for ch in text.chars() {
-        let cw = ch.width().unwrap_or(0);
-        if used + cw > width && used > 0 {
-            out.push(String::new());
-            used = 0;
+    for span in spans {
+        let mut chunk = String::new();
+        for ch in span.text.chars() {
+            let cw = ch.width().unwrap_or(0);
+            if used + cw > width && used > 0 {
+                if let Some(line) = lines.last_mut()
+                    && !chunk.is_empty()
+                {
+                    line.push(Span::new(mem::take(&mut chunk), span.style.clone()));
+                }
+                lines.push(Vec::new());
+                used = 0;
+            }
+            chunk.push(ch);
+            used += cw;
         }
-        if let Some(last) = out.last_mut() {
-            last.push(ch);
+        if let Some(line) = lines.last_mut()
+            && !chunk.is_empty()
+        {
+            line.push(Span::new(chunk, span.style.clone()));
         }
-        used += cw;
     }
-    out
+    lines
 }
 
 #[cfg(test)]
@@ -163,6 +175,17 @@ mod tests {
             Span::new("ness", Style::default()),
         ];
         assert_eq!(plain(&wrap(&spans, 8)), ["xx", "boldness"]);
+    }
+
+    #[test]
+    fn hard_wrap_spans_should_keep_spaces_and_styles() {
+        let spans = [
+            Span::new("ab ", Style::default()),
+            Span::new("  cd", Style::dim()),
+        ];
+        let lines = hard_wrap_spans(&spans, 4);
+        assert_eq!(plain(&lines), ["ab  ", " cd"]);
+        assert!(lines[1].iter().all(|s| s.style.dim));
     }
 
     #[test]

@@ -11,7 +11,14 @@ mermaid-rs-renderer = { version = "0.3.1", default-features = false }
 miniz_oxide = "0.9.1"
 pulldown-cmark = { version = "0.13.6", default-features = false }
 resvg = { version = "0.50.0", default-features = false, features = ["text", "system-fonts"] }
+# Oniguruma, not fancy-regex: compiling a grammar on first use is ~7× faster.
+syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "regex-onig"], optional = true }
 unicode-width = "0.2.3"
+
+[features]
+default = ["highlight"]
+# Syntax highlighting in code blocks (syntect, about 1 MB).
+highlight = ["dep:syntect"]
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }

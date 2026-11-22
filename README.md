@@ -22,7 +22,7 @@ of asterisks.
 - 📊 **Mermaid diagrams.** Flowcharts, sequence diagrams, pie charts and more, rendered
   locally without a browser and colored to match your Ghostty theme.
 - 🔠 **Big headings.** H1–H3 are drawn at large sizes with JetBrains Mono.
-- 🎨 **Theme-aware.** Code blocks, diagrams and headings take their colors from your
+- 🎨 **Theme-aware.** Highlighted code, diagrams and headings take their colors from your
   terminal's palette, so they suit both light and dark themes.
 - 📜 **Built-in pager.** Scrolling, search, mouse wheel, zoomable and pannable diagrams,
   and live re-layout when the window is resized.
@@ -38,7 +38,7 @@ of asterisks.
 | Lists | Nested, ordered (numbers aligned on the dot), and task lists `- [x]` |
 | Block quotes | Drawn with a left bar, including images inside quotes |
 | Alerts | GitHub `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` with a colored bar and title |
-| Code blocks | On a background derived from your theme |
+| Code blocks | Syntax highlighting in the terminal palette's colors, on a background derived from your theme |
 | Tables | Column alignment (`:---:`, `---:`) |
 | Footnotes | `[^1]` style |
 | Definition lists | `Term` followed by `: definition` lines |
@@ -65,6 +65,13 @@ Or build without installing:
 ```sh
 cargo build --release
 ./target/release/martty demo.md
+```
+
+Syntax highlighting adds about 1 MB to the binary and builds the Oniguruma C library, so it
+needs a C compiler. To leave it out:
+
+```sh
+cargo install --path . --no-default-features
 ```
 
 ## Usage
@@ -184,8 +191,7 @@ cargo clippy
 cargo fmt
 ```
 
-See [ROADMAP.md](ROADMAP.md) for planned work, in Russian: syntax highlighting, more
-image formats, link navigation, table of contents, watch mode and more.
+See [ROADMAP.md](ROADMAP.md) for planned work, in Russian: more image formats, link navigation, table of contents, watch mode and more.
 
 ## Acknowledgements
 
@@ -194,6 +200,7 @@ image formats, link navigation, table of contents, watch mode and more.
 - [mermaid-rs-renderer](https://crates.io/crates/mermaid-rs-renderer) and
   [resvg](https://github.com/linebender/resvg) for diagrams
 - [fontdue](https://github.com/mooman219/fontdue) for glyph rasterization
+- [syntect](https://github.com/trishume/syntect) for syntax highlighting
 - [JetBrains Mono](https://www.jetbrains.com/lp/mono/), bundled under the
   [SIL Open Font License](assets/fonts/OFL.txt)
 

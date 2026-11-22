@@ -6,6 +6,8 @@ mod blocks;
 mod deflist;
 mod document;
 mod emoji;
+#[cfg(feature = "highlight")]
+mod highlight;
 mod html;
 mod images;
 mod inline;
