@@ -49,6 +49,7 @@ pub fn render(
 ) -> Result<Raster, String> {
     let svg = mermaid_rs_renderer::render_with_options(source, options(palette))
         .map_err(|e| e.to_string())?;
+    let svg = hide_label_borders(&svg);
     let tree = usvg::Tree::from_str(&svg, svg_options()).map_err(|e| e.to_string())?;
 
     let (cw, ch) = (cell.0.max(1) as f32, cell.1.max(1) as f32);
@@ -136,6 +137,37 @@ fn options(p: &Palette) -> RenderOptions {
     options
 }
 
+/// Edge labels get a backdrop only when they touch their edge, outlined in
+/// the node border color, so one label is framed and the next isn't. The
+/// outline can't be themed separately, so it is dropped here: backdrops
+/// (`<rect … data-label-kind=…>`) keep their fill and lose the stroke.
+fn hide_label_borders(svg: &str) -> String {
+    const OPACITY: &str = "stroke-opacity=\"";
+    let mut out = String::with_capacity(svg.len());
+    let mut rest = svg;
+    while let Some(start) = rest.find("<rect ") {
+        out.push_str(&rest[..start]);
+        rest = &rest[start..];
+        let end = rest.find('>').map_or(rest.len(), |i| i + 1);
+        let (tag, tail) = rest.split_at(end);
+        rest = tail;
+        let value = tag
+            .find(OPACITY)
+            .map(|i| i + OPACITY.len())
+            .and_then(|v| Some(v..v + tag[v..].find('"')?));
+        match value {
+            Some(value) if tag.contains("data-label-kind=") => {
+                out.push_str(&tag[..value.start]);
+                out.push('0');
+                out.push_str(&tag[value.end..]);
+            }
+            _ => out.push_str(tag),
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,6 +220,21 @@ mod tests {
                 2.0
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn hide_label_borders_should_only_touch_label_backdrops() {
+        let svg = concat!(
+            r#"<rect x="0" stroke-opacity="1"/>"#,
+            r#"<rect data-label-kind="center" fill-opacity="0.90" stroke-opacity="0.30"/>"#,
+        );
+        assert_eq!(
+            hide_label_borders(svg),
+            concat!(
+                r#"<rect x="0" stroke-opacity="1"/>"#,
+                r#"<rect data-label-kind="center" fill-opacity="0.90" stroke-opacity="0"/>"#,
+            )
         );
     }
 }
