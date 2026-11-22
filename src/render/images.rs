@@ -13,6 +13,13 @@ use crate::mermaid;
 use crate::picture::{self, Picture};
 use crate::style::{Color, Style};
 
+/// An image sized for the screen, its upload not made yet.
+pub(super) struct Sized {
+    pub(super) cols: u32,
+    pub(super) rows: u32,
+    pub(super) job: Job,
+}
+
 pub(super) struct PendingImage {
     pub(super) url: String,
     /// Alt-text spans in `Renderer::inline`.
@@ -27,58 +34,77 @@ impl Renderer<'_> {
         load(&self.cfg.base_dir, url)
     }
 
-    /// Reserves rows (so container prefixes are drawn), then places the
-    /// image over them, after a blank line when `gap` is set.
-    pub(super) fn emit_image(&mut self, (picture, source): (Picture, u64), gap: bool) {
-        let cfg = self.cfg;
-        let Some(ctx) = &cfg.images else {
-            return;
-        };
+    /// The cell box of an image in the text's width, and the job that
+    /// draws it into that box.
+    pub(super) fn size_image(&self, (picture, source): (Picture, u64)) -> Option<Sized> {
+        let ctx = self.cfg.images.as_ref()?;
         let max_cols = u32::try_from(self.avail()).unwrap_or(u32::MAX);
         let px = picture.pixels(css_px(ctx.cell));
         let (cols, rows) = kitty::fit(px, ctx.cell, max_cols, ctx.max_rows, ctx.zoom);
         let target = (cols * ctx.cell.0, rows * ctx.cell.1);
         let key = cache::key(("image", source, target, cols, rows));
-        if gap {
-            self.blank_line();
-        }
         let job =
             Box::new(move || cache::transmit(key, || picture.encode(target)?.transmit(cols, rows)));
-        self.place(cols, rows, 0, job);
+        Some(Sized { cols, rows, job })
     }
 
     /// Emits an image's placeholder rows as regular lines, after any
     /// container prefixes and `indent` cells of space. `job` makes its
     /// upload, once the pager is about to show it.
     pub(super) fn place(&mut self, cols: u32, rows: u32, indent: usize, job: Job) -> u32 {
-        let id = self.next_image_id();
-        let style = image_style(id);
+        self.place_row(vec![Sized { cols, rows, job }], indent)[0]
+    }
+
+    /// Places `images` side by side, a cell apart, like the inline images
+    /// of a paragraph (a row of badges). Each is its own run of placeholder
+    /// cells, which carries its row and column; one shorter than the row
+    /// leaves blank cells below it. Only a lone image can be wider than the
+    /// line and be panned. Returns the images' ids.
+    pub(super) fn place_row(&mut self, images: Vec<Sized>, indent: usize) -> Vec<u32> {
+        let ids: Vec<u32> = images.iter().map(|_| self.next_image_id()).collect();
         let avail = u32::try_from(self.avail().saturating_sub(indent)).unwrap_or(u32::MAX);
-        let visible = cols.min(avail);
+        let lone = images.len() == 1;
+        let height = images.iter().map(|i| i.rows).max().unwrap_or(0);
         let first = self.line_no;
-        for row in 0..rows.min(kitty::MAX_ROWS) {
+        for row in 0..height.min(kitty::MAX_ROWS) {
             let start = self.out.len();
             self.write_prefix();
             self.out.extend(std::iter::repeat_n(' ', indent));
             let prefix_len = self.out.len() - start;
-            let cells = Span::new(kitty::placeholder_row(row, 0, visible), style.clone());
-            self.pen.write(&mut self.out, &cells, None);
+            for (n, (image, &id)) in images.iter().zip(&ids).enumerate() {
+                if n > 0 {
+                    self.pen
+                        .write(&mut self.out, &Span::new(" ", Style::default()), None);
+                }
+                let visible = image.cols.min(avail);
+                let cells = if row < image.rows {
+                    Span::new(kitty::placeholder_row(row, 0, visible), image_style(id))
+                } else {
+                    Span::new(" ".repeat(visible as usize), Style::default())
+                };
+                self.pen.write(&mut self.out, &cells, None);
+                if lone {
+                    let info = ImageRow {
+                        id,
+                        row,
+                        cols: image.cols,
+                        visible,
+                        prefix_len,
+                    };
+                    self.image_rows.push((self.line_no, info));
+                }
+            }
             self.end_line();
-            let info = ImageRow {
-                id,
-                row,
-                cols,
-                visible,
-                prefix_len,
-            };
-            self.image_rows.push((self.line_no - 1, info));
         }
-        self.uploads.push(Upload {
-            id,
-            lines: first..self.line_no,
-            job,
-        });
-        id
+        for (image, id) in images.into_iter().zip(&ids) {
+            let rows = image.rows.min(kitty::MAX_ROWS) as usize;
+            self.uploads.push(Upload {
+                id: *id,
+                lines: first..first + rows,
+                job: image.job,
+            });
+        }
+        ids
     }
 
     /// Allocates the next image id and transmits the image into the

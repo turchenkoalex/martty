@@ -119,17 +119,12 @@ impl Picture {
     /// Encodes the picture for a box of `px` device pixels and returns
     /// what to transmit. `None` when it can't be decoded.
     pub fn encode(&self, px: (u32, u32)) -> Option<Encoded<'_>> {
-        match self.format {
-            Format::Png => Some(Encoded::Png(&self.data)),
-            Format::Svg => {
-                let image = self.svg.as_ref()?;
-                Some(Encoded::Frames(image.rasterize(&self.data, px)?))
-            }
-            format => {
-                let frames = decode::frames(format, &self.data, px)?;
-                Some(Encoded::Frames(frames))
-            }
-        }
+        let frames = match self.format {
+            Format::Png => return Some(Encoded::Png(&self.data)),
+            Format::Svg => self.svg.as_ref()?.rasterize(&self.data, px)?,
+            format => decode::frames(format, &self.data, px)?,
+        };
+        Some(Encoded::Frames(fill_box(frames, px)))
     }
 }
 
@@ -156,6 +151,29 @@ impl Encoded<'_> {
         }
         Some(t)
     }
+}
+
+/// `frames` on a transparent canvas of exactly `px`, at its left edge and
+/// centred vertically. The box is the picture's size rounded up to whole
+/// cells; Ghostty would centre a smaller image in it, so pictures in a row
+/// (badges) would start a few pixels apart.
+fn fill_box(mut frames: Frames, px: (u32, u32)) -> Frames {
+    let (w, h) = (frames.size.0 as usize, frames.size.1 as usize);
+    let (bw, bh) = (px.0 as usize, px.1 as usize);
+    if (w, h) == (bw, bh) || w > bw || h > bh {
+        return frames;
+    }
+    let top = (bh - h) / 2;
+    for frame in &mut frames.frames {
+        let mut canvas = vec![0u8; bw * bh * 4];
+        for (y, row) in frame.rgba.chunks_exact(w * 4).take(h).enumerate() {
+            let at = ((top + y) * bw) * 4;
+            canvas[at..at + w * 4].copy_from_slice(row);
+        }
+        frame.rgba = canvas;
+    }
+    frames.size = px;
+    frames
 }
 
 /// A local image file, read only when it is a regular file of at most
@@ -211,6 +229,22 @@ mod tests {
         assert_eq!(sniff(b"RIFF\0\0\0\0WEBPVP8 ", none), Some(Format::Webp));
         assert_eq!(sniff(b"  <svg xmlns=''/>", none), Some(Format::Svg));
         assert_eq!(sniff(b"hello", none), None);
+    }
+
+    #[test]
+    fn fill_box_should_put_picture_at_left_edge() {
+        let frames = Frames {
+            size: (1, 1),
+            frames: vec![Frame {
+                rgba: vec![9; 4],
+                delay_ms: 0,
+            }],
+            plays: Some(1),
+        };
+        let filled = fill_box(frames, (2, 3));
+        assert_eq!(filled.size, (2, 3));
+        let px: Vec<u8> = filled.frames[0].rgba.chunks(4).map(|p| p[0]).collect();
+        assert_eq!(px, [0, 0, 9, 0, 0, 0]);
     }
 
     #[test]

@@ -2,6 +2,7 @@ use std::mem;
 
 use pulldown_cmark::BlockQuoteKind;
 
+use super::images::Sized;
 use super::span::{Pen, Span, spans_width};
 use super::wrap::wrap;
 use super::{Renderer, Wide};
@@ -102,13 +103,38 @@ impl Renderer<'_> {
                 self.emit_line(&line);
             }
         }
-        for (image, picture) in images.iter().zip(loaded) {
-            let Some(picture) = picture else { continue };
+        let sized: Vec<(Sized, String)> = images
+            .iter()
+            .zip(loaded)
+            .filter_map(|(image, picture)| {
+                let sized = self.size_image(picture?)?;
+                let alt = spans.get(image.alt.clone()).unwrap_or_default();
+                let alt: String = alt.iter().map(|s| s.text.as_str()).collect();
+                Some((sized, alt.trim().to_owned()))
+            })
+            .collect();
+        // As many images on a row as fit, as a browser lays out inline ones.
+        let avail = self.avail();
+        let mut rest = sized.into_iter().peekable();
+        while rest.peek().is_some() {
+            let (mut row, mut alts, mut width) = (Vec::new(), Vec::new(), 0);
+            while let Some((image, _)) = rest.peek() {
+                let needs = image.cols as usize + usize::from(!row.is_empty());
+                if !row.is_empty() && width + needs > avail {
+                    break;
+                }
+                width += needs;
+                if let Some((image, alt)) = rest.next() {
+                    row.push(image);
+                    alts.push(alt);
+                }
+            }
+            if mem::take(&mut gap) {
+                self.blank_line();
+            }
             let start = self.line_no;
-            self.emit_image(picture, mem::take(&mut gap));
-            let alt = spans.get(image.alt.clone()).unwrap_or_default();
-            let alt: String = alt.iter().map(|s| s.text.as_str()).collect();
-            self.add_source(start, alt.trim(), false);
+            self.place_row(row, 0);
+            self.add_source(start, &alts.join(" "), false);
         }
     }
 

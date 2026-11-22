@@ -54,7 +54,7 @@ of asterisks.
 | Tables | Column alignment (`:---:`, `---:`); a table wider than the screen shrinks its columns by content and wraps the text in its cells |
 | Footnotes | `[^1]` style |
 | Definition lists | `Term` followed by `: definition` lines |
-| Images | PNG, JPEG, GIF, WebP and SVG, local or (with `--remote`) from https; animated GIF and WebP play; a missing or unreadable image falls back to its alt text |
+| Images | PNG, JPEG, GIF, WebP and SVG, local or (with `--remote`) from https; animated GIF and WebP play; images of one paragraph (a row of badges) sit side by side as far as the width allows; a missing or unreadable image falls back to its alt text |
 | Mermaid | ` ```mermaid ` blocks are rendered as diagrams, centered, with text at the terminal's size; click one to open it full screen |
 | Math | `$…$` inline, sitting on the text baseline; `$$…$$` and ` ```math ` blocks centered on their own rows. A formula latex-rust can't render shows as code |
 | Rules | `---` |
