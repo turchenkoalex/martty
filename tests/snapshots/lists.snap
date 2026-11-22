@@ -1,0 +1,26 @@
+---
+source: src/render/tests.rs
+expression: "strip_ansi(&render(&md, &cfg))"
+---
+• one
+• two
+  ◦ nested
+    ▪ deeper
+• a long item that wraps onto a second line, which stays
+  indented under the text
+
+1. first
+2. second
+
+ 8. eight
+ 9. nine
+10. ten
+
+☐ todo
+☑ done
+
+• loose item
+
+• another loose item
+
+  with a second paragraph

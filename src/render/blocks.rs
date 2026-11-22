@@ -7,7 +7,7 @@ use super::Renderer;
 #[cfg(feature = "highlight")]
 use super::highlight::highlight;
 use super::layout::Container;
-use super::span::{Span, spans_width, write_span};
+use super::span::{Span, spans_width};
 use super::wrap::{hard_wrap_spans, wrap};
 use crate::style::{Color, Style, Underline};
 
@@ -62,9 +62,10 @@ impl Renderer<'_> {
                 // The scaled line covers two rows; the empty line after it
                 // is the space for its lower half.
                 for span in &line {
-                    write_span(&mut self.out, span, Some(2));
+                    self.pen.write(&mut self.out, span, Some(2));
                 }
-                self.out.push_str("\x1b[0m\n\n");
+                self.pen.finish_line(&mut self.out);
+                self.out.push_str("\n\n");
                 self.line_no += 2;
             }
             self.wrote_any = true;

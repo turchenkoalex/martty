@@ -3,7 +3,7 @@ use std::mem;
 use pulldown_cmark::BlockQuoteKind;
 
 use super::Renderer;
-use super::span::{Span, spans_width, write_span};
+use super::span::{Pen, Span, spans_width};
 use super::wrap::wrap;
 use crate::style::{Color, Style};
 
@@ -114,7 +114,7 @@ impl Renderer<'_> {
     pub(super) fn emit_line(&mut self, content: &[Span]) {
         self.write_prefix();
         for span in content {
-            write_span(&mut self.out, span, None);
+            self.pen.write(&mut self.out, span, None);
         }
         self.end_line();
     }
@@ -123,14 +123,15 @@ impl Renderer<'_> {
         for c in &mut self.containers {
             let prefix = if c.used { &c.rest } else { &c.first };
             for span in prefix {
-                write_span(&mut self.out, span, None);
+                self.pen.write(&mut self.out, span, None);
             }
             c.used = true;
         }
     }
 
     pub(super) fn end_line(&mut self) {
-        self.out.push_str("\x1b[0m\n");
+        self.pen.finish_line(&mut self.out);
+        self.out.push('\n');
         self.line_no += 1;
         self.wrote_any = true;
     }
@@ -138,13 +139,15 @@ impl Renderer<'_> {
     /// Blank separator: keeps quote bars, never consumes a pending bullet.
     pub(super) fn blank_line(&mut self) {
         let mut line = String::new();
+        let mut pen = Pen::new(self.cfg.color);
         for c in self.containers.iter().take_while(|c| c.used) {
             for span in &c.rest {
-                write_span(&mut line, span, None);
+                pen.write(&mut line, span, None);
             }
         }
         self.out.push_str(line.trim_end_matches(' '));
-        self.out.push_str("\x1b[0m\n");
+        pen.finish_line(&mut self.out);
+        self.out.push('\n');
         self.line_no += 1;
     }
 }

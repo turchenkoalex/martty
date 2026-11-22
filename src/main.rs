@@ -1,9 +1,10 @@
 //! martty — a tiny Markdown renderer tuned for Ghostty.
 //!
-//! Usage: `martty [-p|-P] [FILE]` (reads stdin when FILE is absent or `-`).
-//! Output taller than the screen opens a `less`-like pager; `-p` forces it,
-//! `-P` disables it. Set `MARTTY_TEXT_SIZING=0|1` / `MARTTY_IMAGES=0|1` to
-//! override capability detection.
+//! Usage: `martty [-p|-P] [--width N] [FILE]` (reads stdin when FILE is absent
+//! or `-`). Output taller than the screen opens a `less`-like pager; `-p`
+//! forces it, `-P` disables it. `--width` lays text out for N columns instead
+//! of the terminal width. Set `MARTTY_TEXT_SIZING=0|1` / `MARTTY_IMAGES=0|1`
+//! to override capability detection; `NO_COLOR` turns off colors and images.
 
 mod diacritics;
 mod heading;
@@ -25,7 +26,7 @@ use render::{Config, Diagrams, Document, HeadingImages, Images};
 use style::Color;
 use term::{Caps, Rgb, Size, luma, mix};
 
-const USAGE: &str = "usage: martty [-p|--pager] [-P|--no-pager] [FILE]";
+const USAGE: &str = "usage: martty [-p|--pager] [-P|--no-pager] [--width N] [FILE]";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Paging {
@@ -36,6 +37,8 @@ enum Paging {
 
 struct Args {
     paging: Paging,
+    /// Layout width in cells; the terminal width when absent.
+    width: Option<usize>,
     file: Option<PathBuf>,
 }
 
@@ -59,19 +62,34 @@ fn run() -> io::Result<()> {
         .and_then(Path::file_name)
         .map_or_else(|| "stdin".to_owned(), |n| n.to_string_lossy().into_owned());
 
-    let caps = term::probe();
+    let mut caps = term::probe();
+    // https://no-color.org: any non-empty value. Images go too: placeholders
+    // carry the image id in their foreground color, and diagrams and image
+    // headings are colored anyway. Without a background, code blocks get a
+    // bar instead of a panel.
+    let color = std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty());
+    if !color {
+        caps.graphics = false;
+        caps.bg = None;
+    }
+    let pending_input = std::mem::take(&mut caps.pending_input);
     let mut next_id = image_id_seed();
-    let mut render = |layout: Layout<'_>, size: Size, zoom: f32| {
+    let mut render = |layout: Layout<'_>, mut size: Size, zoom: f32| {
+        if let Some(width) = args.width {
+            size.cols = width;
+        }
         let first_id = next_id;
         // Fresh ids per layout, so a re-render never reuses live images.
         next_id = next_id.wrapping_add(0x1000);
         match layout {
             Layout::Document => {
-                let config = config(&caps, size, &base_dir, first_id, zoom, false);
+                let mut config = config(&caps, size, &base_dir, first_id, zoom, false);
+                config.color = color;
                 render::render(&markdown, &config)
             }
             Layout::Diagram(source) => {
-                let config = config(&caps, size, &base_dir, first_id, zoom, true);
+                let mut config = config(&caps, size, &base_dir, first_id, zoom, true);
+                config.color = color;
                 render::render(&format!("```mermaid\n{source}\n```\n"), &config)
             }
         }
@@ -86,7 +104,7 @@ fn run() -> io::Result<()> {
             Paging::Auto => doc.lines.len() >= size.rows,
         };
     if page {
-        return pager::run(&title, doc, render);
+        return pager::run(&title, doc, &pending_input, render);
     }
     print(&doc)
 }
@@ -100,10 +118,19 @@ fn print(doc: &Document) -> io::Result<()> {
 fn parse_args() -> io::Result<Args> {
     let mut args = Args {
         paging: Paging::Auto,
+        width: None,
         file: None,
     };
-    for arg in std::env::args_os().skip(1) {
+    let mut argv = std::env::args_os().skip(1);
+    while let Some(arg) = argv.next() {
         match arg.to_str() {
+            Some("--width") => {
+                let value = argv.next();
+                args.width = Some(parse_width(value.as_ref().and_then(|v| v.to_str()))?);
+            }
+            Some(flag) if flag.starts_with("--width=") => {
+                args.width = Some(parse_width(flag.strip_prefix("--width="))?);
+            }
             Some("-p" | "--pager") => args.paging = Paging::Always,
             Some("-P" | "--no-pager") => args.paging = Paging::Never,
             Some("-h" | "--help") => {
@@ -120,6 +147,18 @@ fn parse_args() -> io::Result<Args> {
         }
     }
     Ok(args)
+}
+
+fn parse_width(value: Option<&str>) -> io::Result<usize> {
+    value
+        .and_then(|v| v.parse().ok())
+        .filter(|&w| w > 0)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("--width needs a positive number of columns\n{USAGE}"),
+            )
+        })
 }
 
 /// Markdown text plus the directory relative image paths resolve against.
@@ -198,6 +237,7 @@ fn config(
     });
     Config {
         width: size.cols,
+        color: true,
         text_sizing: caps.text_sizing,
         code_bg: caps.bg.map(|bg| {
             let (r, g, b) = panel_rgb(bg, fg);

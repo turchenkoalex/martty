@@ -36,17 +36,22 @@ fn strip_ansi(s: &str) -> String {
     out
 }
 
-fn render_plain(md: &str) -> String {
-    let cfg = Config {
+/// Text only, 40 columns: no images, no code background.
+fn plain_config() -> Config {
+    Config {
         width: 40,
+        color: true,
         text_sizing: false,
         code_bg: None,
         images: None,
         headings: None,
         diagrams: None,
         first_image_id: 1,
-    };
-    strip_ansi(&render(md, &cfg))
+    }
+}
+
+fn render_plain(md: &str) -> String {
+    strip_ansi(&render(md, &plain_config()))
 }
 
 #[test]
@@ -72,6 +77,7 @@ fn render_should_not_put_blank_lines_inside_tight_list() {
 fn render_should_keep_padded_inline_code_attached_to_punctuation() {
     let cfg = Config {
         width: 40,
+        color: true,
         text_sizing: false,
         code_bg: Some(Color::Ansi(0)),
         images: None,
@@ -86,6 +92,7 @@ fn render_should_keep_padded_inline_code_attached_to_punctuation() {
 fn images_config() -> Config {
     Config {
         width: 40,
+        color: true,
         text_sizing: false,
         code_bg: None,
         images: Some(Images {
@@ -248,13 +255,14 @@ fn render_should_highlight_marked_text_only_in_pairs() {
     let cfg = images_config();
     let out = render("a ==b== c == d", &cfg);
     assert_eq!(strip_ansi(&out), "a b c == d\n");
-    assert!(out.contains("\x1b[0;38;5;0;48;5;3mb"), "{out:?}");
+    assert!(out.contains("a \x1b[38;5;0;48;5;3mb\x1b[0m c"), "{out:?}");
 }
 
 #[cfg(feature = "mermaid")]
 fn diagram_indent(center: bool) -> Option<usize> {
     let cfg = Config {
         width: 200,
+        color: true,
         diagrams: Some(Diagrams {
             palette: mermaid::Palette {
                 bg: (0, 0, 0),
@@ -314,4 +322,35 @@ fn render_should_only_start_definitions_at_colon_and_space() {
         render_plain("T\n: ok\n:not\n\nU\n: two"),
         "T\n  ok :not\nU\n  two\n"
     );
+}
+
+/// Every `tests/fixtures/*.md` rendered as plain text and compared with its
+/// snapshot in `tests/snapshots`. Review changes with `cargo insta review`,
+/// or accept them with `INSTA_UPDATE=always cargo test`.
+#[test]
+fn render_should_match_fixture_snapshots() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let mut fixtures: Vec<PathBuf> = std::fs::read_dir(root.join("fixtures"))
+        .unwrap_or_else(|e| panic!("fixtures: {e}"))
+        .filter_map(|entry| Some(entry.ok()?.path()))
+        .filter(|path| path.extension().is_some_and(|e| e == "md"))
+        .collect();
+    fixtures.sort();
+    assert!(!fixtures.is_empty(), "no fixtures found");
+
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path(root.join("snapshots"));
+    settings.set_prepend_module_to_snapshot(false);
+    settings.bind(|| {
+        for path in &fixtures {
+            let md =
+                std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
+            let cfg = Config {
+                width: 60,
+                ..plain_config()
+            };
+            insta::assert_snapshot!(name, strip_ansi(&render(&md, &cfg)));
+        }
+    });
 }

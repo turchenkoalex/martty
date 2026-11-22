@@ -37,7 +37,7 @@ use html::OpenTag;
 use images::PendingImage;
 use inline::link_style;
 use layout::Container;
-use span::Span;
+use span::{Pen, Span};
 
 const ACCENT: Color = Color::Ansi(6);
 const LINK: Color = Color::Ansi(4);
@@ -51,6 +51,8 @@ struct OrderedList {
 
 pub struct Config {
     pub width: usize,
+    /// `false` under `NO_COLOR`: text keeps bold, italic and the like, but no colors.
+    pub color: bool,
     /// Kitty text sizing protocol (OSC 66) for big headings.
     pub text_sizing: bool,
     /// Background for code; `None` falls back to a left bar.
@@ -150,6 +152,8 @@ fn ordered_list_lengths(events: &[Event<'_>]) -> VecDeque<u64> {
 struct Renderer<'c> {
     cfg: &'c Config,
     out: String,
+    /// Style state of the line being written to `out`.
+    pen: Pen,
     preamble: String,
     image_ids: Vec<u32>,
     /// Lines written to `out` so far.
@@ -178,6 +182,7 @@ impl<'c> Renderer<'c> {
         Self {
             cfg,
             out: String::new(),
+            pen: Pen::new(cfg.color),
             preamble: String::new(),
             image_ids: Vec::new(),
             line_no: 0,

@@ -27,18 +27,58 @@ pub(super) fn spans_width(spans: &[Span]) -> usize {
     spans.iter().map(Span::width).sum()
 }
 
-pub(super) fn write_span(out: &mut String, span: &Span, scale: Option<u8>) {
-    span.style.write_sgr(out);
-    if let Some(url) = &span.style.link {
-        let _ = write!(out, "\x1b]8;;{url}\x1b\\");
-    }
-    match scale {
-        Some(s) => {
-            let _ = write!(out, "\x1b]66;s={s};{}\x07", span.text);
+/// Writes spans of one line, sending only the SGR and OSC 8 changes between
+/// them. Each line starts and ends with the default style, so the pager can
+/// draw any line on its own.
+#[derive(Default)]
+pub(super) struct Pen {
+    /// Style and link the terminal has right now.
+    current: Style,
+    /// `NO_COLOR`: colors are dropped, other attributes kept.
+    no_color: bool,
+}
+
+impl Pen {
+    pub(super) fn new(color: bool) -> Self {
+        Self {
+            current: Style::default(),
+            no_color: !color,
         }
-        None => out.push_str(&span.text),
     }
-    if span.style.link.is_some() {
-        out.push_str("\x1b]8;;\x1b\\");
+
+    /// `scale` wraps the text in OSC 66 (text sizing).
+    pub(super) fn write(&mut self, out: &mut String, span: &Span, scale: Option<u8>) {
+        let style = if self.no_color {
+            span.style.without_colors()
+        } else {
+            span.style.clone()
+        };
+        style.write_sgr_from(&self.current, out);
+        if style.link != self.current.link {
+            if self.current.link.is_some() {
+                out.push_str("\x1b]8;;\x1b\\");
+            }
+            if let Some(url) = &style.link {
+                let _ = write!(out, "\x1b]8;;{url}\x1b\\");
+            }
+        }
+        match scale {
+            Some(s) => {
+                let _ = write!(out, "\x1b]66;s={s};{}\x07", span.text);
+            }
+            None => out.push_str(&span.text),
+        }
+        self.current = style;
+    }
+
+    /// Closes an open link and resets the style, if anything is active.
+    pub(super) fn finish_line(&mut self, out: &mut String) {
+        if self.current.link.is_some() {
+            out.push_str("\x1b]8;;\x1b\\");
+        }
+        if self.current != Style::default() {
+            out.push_str("\x1b[0m");
+        }
+        self.current = Style::default();
     }
 }

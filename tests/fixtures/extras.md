@@ -1,0 +1,12 @@
+---
+title: Fixture
+tags: [a, b]
+---
+
+Text with a footnote.[^1]
+
+Term
+: First definition.
+: Second definition.
+
+[^1]: The footnote text.

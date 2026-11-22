@@ -53,10 +53,12 @@ enum Action {
 }
 
 /// Runs the pager until the user quits. `render` lays out the document or a
-/// single diagram for a screen size and diagram zoom.
+/// single diagram for a screen size and diagram zoom. `pending` holds keys
+/// already read from the tty (during the capability probe), handled first.
 pub fn run(
     title: &str,
     doc: Document,
+    pending: &[u8],
     mut render: impl FnMut(Layout<'_>, Size, f32) -> Document,
 ) -> io::Result<()> {
     let mut tty = OpenOptions::new().read(true).write(true).open("/dev/tty")?;
@@ -64,30 +66,27 @@ pub fn run(
     let mut pager = Pager::new(title, term::size(), doc);
     pager.enter()?;
 
+    let mut keys = keys::parse_keys(pending);
     loop {
-        pager.redraw()?;
-        let Some(keys) = read_keys(&mut tty)? else {
-            let size = term::size();
-            if (size.cols, size.rows) != (pager.size.cols, pager.size.rows) {
-                pager.size = size;
-                for depth in 0..pager.views.len() {
-                    pager.relayout(depth, &mut render)?;
-                }
-            }
-            continue;
-        };
         for key in keys {
-            match pager.handle(key) {
-                Action::Continue => {}
-                Action::Quit => return Ok(()),
-                Action::Relayout => pager.relayout(pager.views.len() - 1, &mut render)?,
-                Action::Open(source) => {
-                    let doc = render(Layout::Diagram(&source), pager.size, 1.0);
-                    pager.push(View::new(doc, Some(source)))?;
-                }
-                Action::Close => pager.pop()?,
+            if pager.apply(key, &mut render)? == Action::Quit {
+                return Ok(());
             }
         }
+        pager.redraw()?;
+        keys = match read_keys(&mut tty)? {
+            Some(keys) => keys,
+            None => {
+                let size = term::size();
+                if (size.cols, size.rows) != (pager.size.cols, pager.size.rows) {
+                    pager.size = size;
+                    for depth in 0..pager.views.len() {
+                        pager.relayout(depth, &mut render)?;
+                    }
+                }
+                Vec::new()
+            }
+        };
     }
 }
 
@@ -156,6 +155,25 @@ impl<'a> Pager<'a> {
             write_out(&free_images(&view.doc))?;
         }
         Ok(())
+    }
+
+    /// Handles one key; returns `Action::Quit` when the pager should exit.
+    fn apply(
+        &mut self,
+        key: keys::Key,
+        render: &mut impl FnMut(Layout<'_>, Size, f32) -> Document,
+    ) -> io::Result<Action> {
+        let action = self.handle(key);
+        match &action {
+            Action::Continue | Action::Quit => {}
+            Action::Relayout => self.relayout(self.views.len() - 1, render)?,
+            Action::Open(source) => {
+                let doc = render(Layout::Diagram(source), self.size, 1.0);
+                self.push(View::new(doc, Some(source.clone())))?;
+            }
+            Action::Close => self.pop()?,
+        }
+        Ok(action)
     }
 
     /// Re-renders the view at `depth`, keeping its relative position.

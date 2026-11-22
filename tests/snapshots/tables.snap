@@ -1,0 +1,16 @@
+---
+source: src/render/tests.rs
+expression: "strip_ansi(&render(&md, &cfg))"
+---
+┌────────────────┬────────┬───────┐
+│ Left           │ Center │ Right │
+├────────────────┼────────┼───────┤
+│ a              │   b    │     c │
+│ long cell text │  code  │  bold │
+└────────────────┴────────┴───────┘
+
+┌────────┐
+│ Single │
+├────────┤
+│ row    │
+└────────┘

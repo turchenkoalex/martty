@@ -89,16 +89,18 @@ cat notes.md | martty       # read from stdin
 martty - < notes.md         # same, explicitly
 martty -p short.md          # always open the pager
 martty -P long.md | head    # never open the pager
+martty --width 72 notes.md  # lay out for 72 columns
 ```
 
 ```
-usage: martty [-p|--pager] [-P|--no-pager] [FILE]
+usage: martty [-p|--pager] [-P|--no-pager] [--width N] [FILE]
 ```
 
 | Flag | Meaning |
 |---|---|
 | `-p`, `--pager` | Always open the pager |
 | `-P`, `--no-pager` | Never open the pager; print straight to stdout |
+| `--width N` | Lay out text for `N` columns instead of the terminal width (80 when it is unknown, as in a pipe) |
 | `-h`, `--help` | Show usage |
 
 By default martty prints the document directly. If the output is taller than the screen
@@ -145,6 +147,7 @@ detection gets something wrong, override it with environment variables:
 |---|---|---|
 | `MARTTY_IMAGES` | `0` / `1` | Disable or force images, diagrams and image headings |
 | `MARTTY_TEXT_SIZING` | `0` / `1` | Disable or force OSC 66 text sizing for headings |
+| `NO_COLOR` | any non-empty | No colors: text keeps bold, italic and underline; images, diagrams and image headings are off, as with `MARTTY_IMAGES=0` |
 
 When graphics are not available, martty falls back to plain styled text: diagrams show up
 as code blocks and images as their alt text.

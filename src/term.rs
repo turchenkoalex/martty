@@ -40,6 +40,9 @@ pub struct Caps {
     pub cell: Option<(u32, u32)>,
     /// Base ANSI palette (only the entries we query are filled).
     pub palette: [Option<Rgb>; 8],
+    /// Keys pressed while the probe was reading the tty, for the pager to
+    /// handle first instead of losing them.
+    pub pending_input: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -89,7 +92,13 @@ pub fn probe() -> Caps {
     if !io::stdout().is_terminal() {
         return Caps::default();
     }
-    let mut caps = query().map(|r| parse_response(&r)).unwrap_or_default();
+    let mut caps = query()
+        .map(|r| {
+            let mut caps = parse_response(&r);
+            caps.pending_input = strip_replies(&r);
+            caps
+        })
+        .unwrap_or_default();
     if let Ok(v) = std::env::var("MARTTY_TEXT_SIZING") {
         caps.text_sizing = v == "1";
     }
@@ -150,7 +159,57 @@ fn parse_response(resp: &[u8]) -> Caps {
         graphics: find(resp, b"\x1b_Gi=31;OK").is_some(),
         cell: cell_pixels(resp),
         palette: std::array::from_fn(|i| osc_color(resp, format!("]4;{i};rgb:").as_bytes())),
+        pending_input: Vec::new(),
     }
+}
+
+/// What is left of the probe's input once the terminal's replies are cut
+/// out: keys the user pressed meanwhile. Replies are OSC (colors), APC
+/// (kitty graphics) and CSI ending in `R` (CPR), `t` (cell size) or `c`
+/// (DA1); other CSI sequences, like arrow keys, are kept. A reply cut short
+/// by the timeout is dropped.
+fn strip_replies(buf: &[u8]) -> Vec<u8> {
+    let mut keys = Vec::new();
+    let mut i = 0;
+    while i < buf.len() {
+        if buf[i] != 0x1b {
+            keys.push(buf[i]);
+            i += 1;
+            continue;
+        }
+        match buf.get(i + 1) {
+            Some(b']' | b'_') => i = string_end(buf, i + 2),
+            Some(b'[') => {
+                let start = i + 2;
+                let Some(len) = buf[start..].iter().position(|c| (0x40..=0x7e).contains(c)) else {
+                    break;
+                };
+                let end = start + len + 1;
+                if !matches!(buf[start + len], b'R' | b't' | b'c') {
+                    keys.extend_from_slice(&buf[i..end]);
+                }
+                i = end;
+            }
+            _ => {
+                keys.push(0x1b);
+                i += 1;
+            }
+        }
+    }
+    keys
+}
+
+/// Index just past the BEL or ST that ends an OSC or APC string at `from`.
+fn string_end(buf: &[u8], from: usize) -> usize {
+    let mut i = from;
+    while i < buf.len() {
+        match buf[i] {
+            0x07 => return i + 1,
+            0x1b if buf.get(i + 1) == Some(&b'\\') => return i + 2,
+            _ => i += 1,
+        }
+    }
+    buf.len()
 }
 
 /// Cell size from a `CSI 6 ; height ; width t` reply.
@@ -285,6 +344,25 @@ mod tests {
             parse_response(GHOSTTY_LIKE).palette[5],
             Some((0xc6, 0xa0, 0xf6))
         );
+    }
+
+    #[test]
+    fn strip_replies_should_keep_only_typed_keys() {
+        let mut input = b"j".to_vec();
+        input.extend_from_slice(GHOSTTY_LIKE);
+        input.extend_from_slice(b"\x1b[Bq");
+        assert_eq!(strip_replies(&input), b"j\x1b[Bq");
+    }
+
+    #[test]
+    fn strip_replies_should_drop_reply_cut_short() {
+        assert_eq!(strip_replies(b"q\x1b]11;rgb:28"), b"q");
+        assert_eq!(strip_replies(b"q\x1b[12;"), b"q");
+    }
+
+    #[test]
+    fn strip_replies_should_keep_lone_escape() {
+        assert_eq!(strip_replies(b"\x1b"), b"\x1b");
     }
 
     #[test]

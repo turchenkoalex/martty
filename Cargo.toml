@@ -33,3 +33,6 @@ too_many_lines = "warn"
 [profile.release]
 lto = true
 strip = true
+
+[dev-dependencies]
+insta = { version = "1.49.0", default-features = false }

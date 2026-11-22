@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use pulldown_cmark::HeadingLevel;
 
-use super::span::{Span, write_span};
+use super::span::Span;
 use super::wrap::wrap;
 use super::{ImageRow, Renderer};
 use crate::kitty;
@@ -62,7 +62,7 @@ impl Renderer<'_> {
             self.out.extend(std::iter::repeat_n(' ', indent));
             let prefix_len = self.out.len() - start;
             let cells = Span::new(kitty::placeholder_row(row, 0, visible), style.clone());
-            write_span(&mut self.out, &cells, None);
+            self.pen.write(&mut self.out, &cells, None);
             self.end_line();
             let info = ImageRow {
                 id,

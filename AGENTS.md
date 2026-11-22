@@ -107,3 +107,8 @@ lower its cap. Raising a cap is a deliberate exception; say why in the commit me
 Unit tests sit inline in `#[cfg(test)] mod tests` blocks. Test rendering on its text
 output without color codes. There is no terminal in tests: `render` takes a `Config`
 built from the probed capabilities, so tests construct one instead of probing.
+
+Snapshot tests render every `tests/fixtures/*.md` as plain text at 60 columns and compare
+it with `tests/snapshots/*.snap` (`insta`). When a change alters output on purpose, update
+them with `INSTA_UPDATE=always cargo test` (or `cargo insta review`) and read the diff of
+the `.snap` files before committing. Cover a new block or inline feature with a fixture.

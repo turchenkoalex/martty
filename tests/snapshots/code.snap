@@ -1,0 +1,18 @@
+---
+source: src/render/tests.rs
+expression: "strip_ansi(&render(&md, &cfg))"
+---
+Inline code and code with `backticks`.
+
+│ rust
+│ fn main() {
+│     println!("tab-indented");
+│ }
+
+│ plain block without a language
+
+│ indented code block
+
+│ mermaid
+│ graph TD
+│   A --> B
