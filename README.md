@@ -35,7 +35,7 @@ of asterisks.
 | Headings | H1–H3 drawn as large images, H4–H6 styled as text |
 | Emphasis | **bold**, *italic*, ~~strikethrough~~, `inline code` |
 | Links | Clickable through OSC 8 |
-| Lists | Nested, ordered, and task lists `- [x]` |
+| Lists | Nested, ordered (numbers aligned on the dot), and task lists `- [x]` |
 | Block quotes | Drawn with a left bar, including images inside quotes |
 | Alerts | GitHub `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` with a colored bar and title |
 | Code blocks | On a background derived from your theme |

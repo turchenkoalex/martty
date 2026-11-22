@@ -56,9 +56,9 @@ pie title Where time goes
 - [ ] todo
 - [x] done
 
-1. one
-2. two
-3. three
+8. eight
+9. nine
+10. ten, numbers line up on the dot
 
 ### Code
 

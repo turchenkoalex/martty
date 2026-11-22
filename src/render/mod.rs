@@ -12,6 +12,7 @@ mod span;
 mod tests;
 mod wrap;
 
+use std::collections::VecDeque;
 use std::mem;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -34,6 +35,12 @@ use span::Span;
 const ACCENT: Color = Color::Ansi(6);
 const LINK: Color = Color::Ansi(4);
 const BULLETS: [&str; 3] = ["•", "◦", "▪"];
+
+struct OrderedList {
+    next: u64,
+    /// Digits in the last number; markers are right-aligned to it.
+    width: usize,
+}
 
 pub struct Config {
     pub width: usize,
@@ -86,11 +93,44 @@ pub fn render(markdown: &str, config: &Config) -> Document {
         | Options::ENABLE_GFM
         | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
         | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS;
+    let events: Vec<Event<'_>> = Parser::new_ext(markdown, options).collect();
     let mut renderer = Renderer::new(config);
-    for event in Parser::new_ext(markdown, options) {
+    renderer.list_lengths = ordered_list_lengths(&events);
+    for event in events {
         renderer.event(event);
     }
     renderer.finish()
+}
+
+/// Item count of every ordered list, in the order the lists start, so
+/// markers can be padded to the widest number before it is reached.
+fn ordered_list_lengths(events: &[Event<'_>]) -> VecDeque<u64> {
+    let mut lengths = VecDeque::new();
+    let mut open: Vec<Option<usize>> = Vec::new();
+    for event in events {
+        match event {
+            Event::Start(Tag::List(Some(_))) => {
+                open.push(Some(lengths.len()));
+                lengths.push_back(0);
+            }
+            Event::Start(Tag::List(None)) => open.push(None),
+            Event::End(TagEnd::List(_)) => {
+                open.pop();
+            }
+            Event::Start(Tag::Item) => {
+                if let Some(n) = open
+                    .last()
+                    .copied()
+                    .flatten()
+                    .and_then(|i| lengths.get_mut(i))
+                {
+                    *n += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    lengths
 }
 
 struct Renderer<'c> {
@@ -105,8 +145,8 @@ struct Renderer<'c> {
     inline: Vec<Span>,
     styles: Vec<Style>,
     containers: Vec<Container>,
-    /// `Some(next_number)` for ordered lists.
-    lists: Vec<Option<u64>>,
+    lists: Vec<Option<OrderedList>>,
+    list_lengths: VecDeque<u64>,
     heading: Option<HeadingLevel>,
     code: Option<CodeBlock>,
     /// Front matter being collected, with its key/value separator.
@@ -131,6 +171,7 @@ impl<'c> Renderer<'c> {
             styles: vec![Style::default()],
             containers: Vec::new(),
             lists: Vec::new(),
+            list_lengths: VecDeque::new(),
             heading: None,
             code: None,
             metadata: None,
@@ -231,7 +272,15 @@ impl<'c> Renderer<'c> {
                 } else {
                     self.flush_inline();
                 }
-                self.lists.push(start);
+                let list = start.map(|next| {
+                    let len = self.list_lengths.pop_front().unwrap_or(1).max(1);
+                    let last = next.saturating_add(len - 1);
+                    OrderedList {
+                        next,
+                        width: last.to_string().len(),
+                    }
+                });
+                self.lists.push(list);
             }
             Tag::Item => {
                 self.flush_inline();

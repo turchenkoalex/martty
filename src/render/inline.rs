@@ -51,9 +51,9 @@ impl Renderer<'_> {
     pub(super) fn next_marker(&mut self) -> Span {
         let depth = self.lists.len();
         match self.lists.last_mut() {
-            Some(Some(n)) => {
-                let marker = format!("{n}. ");
-                *n += 1;
+            Some(Some(list)) => {
+                let marker = format!("{:>w$}. ", list.next, w = list.width);
+                list.next += 1;
                 Span::new(marker, Style::fg(ACCENT))
             }
             _ => {

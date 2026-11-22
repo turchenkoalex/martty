@@ -195,3 +195,12 @@ fn render_should_align_yaml_front_matter() {
 fn render_should_read_toml_front_matter() {
     assert_eq!(render_plain("+++\nkey = 'v'\n+++\n"), "key  v\n");
 }
+
+#[test]
+fn render_should_right_align_ordered_list_numbers() {
+    let md = "8. a\n9. b\n10. c\n    1. x\n    2. y";
+    assert_eq!(
+        render_plain(md),
+        " 8. a\n 9. b\n10. c\n    1. x\n    2. y\n"
+    );
+}
