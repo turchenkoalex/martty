@@ -64,21 +64,31 @@ of asterisks.
 
 ## Installation
 
-### Prebuilt binaries (macOS)
+### Prebuilt binaries
 
 Each [release](https://github.com/turchenkoalex/martty/releases/latest) has binaries for
-Apple silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`):
+macOS on Apple silicon and for Linux on x86_64 and arm64:
+
+| System | Archive |
+|---|---|
+| macOS, Apple silicon | [`martty-aarch64-apple-darwin.tar.gz`](https://github.com/turchenkoalex/martty/releases/latest/download/martty-aarch64-apple-darwin.tar.gz) |
+| Linux, x86_64 | [`martty-x86_64-unknown-linux-musl.tar.gz`](https://github.com/turchenkoalex/martty/releases/latest/download/martty-x86_64-unknown-linux-musl.tar.gz) |
+| Linux, arm64 | [`martty-aarch64-unknown-linux-musl.tar.gz`](https://github.com/turchenkoalex/martty/releases/latest/download/martty-aarch64-unknown-linux-musl.tar.gz) |
+
+Each archive has a `.sha256` next to it. To install into `~/.local/bin`, put your
+system's name in `target`:
 
 ```sh
+target=aarch64-apple-darwin   # or x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
 mkdir -p ~/.local/bin
-curl -fsSL https://github.com/turchenkoalex/martty/releases/latest/download/martty-aarch64-apple-darwin.tar.gz \
-  | tar -xz -C ~/.local/bin --strip-components 1 martty-aarch64-apple-darwin/martty
+curl -fsSL https://github.com/turchenkoalex/martty/releases/latest/download/martty-$target.tar.gz \
+  | tar -xz -C ~/.local/bin --strip-components 1 martty-$target/martty
 ```
 
-The binaries are signed ad hoc, not with an Apple Developer ID. `curl` doesn't mark the
-file as downloaded, but one saved from a browser is quarantined and macOS refuses to run
-it; clear the flag with `xattr -d com.apple.quarantine martty`. Each archive has a
-`.sha256` next to it.
+The Linux binaries are static (musl), so they run on any distribution. The macOS binary is
+signed ad hoc, not with an Apple Developer ID. `curl` doesn't mark the file as downloaded,
+but one saved from a browser is quarantined and macOS refuses to run it; clear the flag
+with `xattr -d com.apple.quarantine martty`. On an Intel Mac, build from source.
 
 ### From source
 
