@@ -223,8 +223,6 @@ cargo clippy
 cargo fmt
 ```
 
-See [ROADMAP.md](ROADMAP.md) for planned work, in Russian: link navigation, table of contents, watch mode and more.
-
 ## Acknowledgements
 
 - [Ghostty](https://ghostty.org), the terminal this is built for

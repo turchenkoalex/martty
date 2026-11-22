@@ -1,6 +1,6 @@
 ---
 title: martty demo
-description: Every feature martty renders, and the ones on the roadmap, on one page
+description: Every feature martty renders, and the ones planned next, on one page
 tags: [markdown, ghostty]
 draft: false
 ---
@@ -9,8 +9,8 @@ draft: false
 
 A tiny **Markdown** renderer for *Ghostty*, with `inline code`,
 ~~strikethrough~~ and [links](https://ghostty.org) that are clickable (OSC 8).
-This page exercises everything martty renders today and everything on the
-[roadmap](ROADMAP.md), so it shows what already works and what doesn't yet.
+This page exercises everything martty renders today and the features planned
+next, so it shows what already works and what doesn't yet.
 
 ## Text
 
@@ -361,7 +361,7 @@ Ghostty
 
 Links to move between with `Tab` and open with `Enter`:
 
-- a relative Markdown file opens inside martty: [README](README.md), [ROADMAP](ROADMAP.md)
+- a relative Markdown file opens inside martty: [README](README.md), [AGENTS](AGENTS.md)
 - a heading on this page: [Tables](#tables)
 - a web page opens in the browser: [Ghostty](https://ghostty.org)
 - a local file: [license](LICENSE)
