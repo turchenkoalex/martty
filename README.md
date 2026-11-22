@@ -153,7 +153,7 @@ of lines and never re-sends pixels.
 
 | Module | Responsibility |
 |---|---|
-| `render.rs` | Markdown → lines of styled text |
+| `render/` | Markdown → lines of styled text |
 | `term.rs` | Capability probing, raw mode, terminal size |
 | `kitty.rs`, `diacritics.rs` | kitty graphics transmission and Unicode placeholders |
 | `mermaid.rs` | Diagram rendering with theme colors |

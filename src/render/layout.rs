@@ -1,0 +1,120 @@
+use std::mem;
+
+use super::Renderer;
+use super::span::{Span, spans_width, write_span};
+use super::wrap::wrap;
+use crate::style::Style;
+
+/// A block quote or list item: what to print on its first line and on the rest.
+pub(super) struct Container {
+    pub(super) first: Vec<Span>,
+    pub(super) rest: Vec<Span>,
+    pub(super) used: bool,
+}
+
+impl Container {
+    pub(super) fn hanging(first: Vec<Span>) -> Self {
+        let rest = vec![Span::new(" ".repeat(spans_width(&first)), Style::default())];
+        Self {
+            first,
+            rest,
+            used: false,
+        }
+    }
+
+    pub(super) fn repeating(prefix: Vec<Span>) -> Self {
+        Self {
+            first: prefix.clone(),
+            rest: prefix,
+            used: false,
+        }
+    }
+}
+
+impl Renderer<'_> {
+    pub(super) fn open_block(&mut self) {
+        self.flush_inline();
+        if self.pending_blank && self.wrote_any {
+            self.blank_line();
+        }
+        self.pending_blank = false;
+    }
+
+    pub(super) fn close_block(&mut self) {
+        self.flush_inline();
+        self.pending_blank = true;
+    }
+
+    pub(super) fn flush_inline(&mut self) {
+        let spans = mem::take(&mut self.inline);
+        let images = mem::take(&mut self.images);
+        let in_alt = |i: usize| images.iter().any(|im| im.alt.contains(&i));
+        // A paragraph that is just images replaces its alt text with them.
+        let only_images = self.cfg.images.is_some()
+            && !images.is_empty()
+            && spans
+                .iter()
+                .enumerate()
+                .all(|(i, s)| in_alt(i) || s.text.trim().is_empty());
+
+        if !only_images && !spans.iter().all(|s| s.text.trim().is_empty()) {
+            for line in wrap(&spans, self.avail()) {
+                self.emit_line(&line);
+            }
+        }
+        for image in &images {
+            let shown = self.cfg.images.is_some() && self.emit_image(&image.url);
+            if only_images && !shown {
+                let alt = spans.get(image.alt.clone()).unwrap_or_default();
+                for line in wrap(alt, self.avail()) {
+                    self.emit_line(&line);
+                }
+            }
+        }
+    }
+
+    pub(super) fn prefix_width(&self) -> usize {
+        self.containers.iter().map(|c| spans_width(&c.rest)).sum()
+    }
+
+    pub(super) fn avail(&self) -> usize {
+        self.cfg.width.saturating_sub(self.prefix_width()).max(8)
+    }
+
+    pub(super) fn emit_line(&mut self, content: &[Span]) {
+        self.write_prefix();
+        for span in content {
+            write_span(&mut self.out, span, None);
+        }
+        self.end_line();
+    }
+
+    pub(super) fn write_prefix(&mut self) {
+        for c in &mut self.containers {
+            let prefix = if c.used { &c.rest } else { &c.first };
+            for span in prefix {
+                write_span(&mut self.out, span, None);
+            }
+            c.used = true;
+        }
+    }
+
+    pub(super) fn end_line(&mut self) {
+        self.out.push_str("\x1b[0m\n");
+        self.line_no += 1;
+        self.wrote_any = true;
+    }
+
+    /// Blank separator: keeps quote bars, never consumes a pending bullet.
+    pub(super) fn blank_line(&mut self) {
+        let mut line = String::new();
+        for c in self.containers.iter().take_while(|c| c.used) {
+            for span in &c.rest {
+                write_span(&mut line, span, None);
+            }
+        }
+        self.out.push_str(line.trim_end_matches(' '));
+        self.out.push_str("\x1b[0m\n");
+        self.line_no += 1;
+    }
+}

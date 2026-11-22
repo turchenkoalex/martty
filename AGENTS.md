@@ -29,7 +29,15 @@ output, say what to look at in `demo.md` instead of claiming it looks right.
 ```
 src/
 ├── main.rs        # args, reading input, choosing between stdout and the pager
-├── render.rs      # pulldown-cmark events → lines of styled text
+├── render/        # pulldown-cmark events → lines of styled text
+│   ├── mod.rs     # Config, `render`, event dispatch
+│   ├── document.rs # rendered Document, lines, image rows for panning
+│   ├── layout.rs  # containers (quotes, list items), line prefixes, block spacing
+│   ├── inline.rs  # inline styles, code spans, list and task markers
+│   ├── blocks.rs  # headings, code blocks, tables, rules
+│   ├── images.rs  # images, diagrams and image headings placed via kitty
+│   ├── span.rs    # styled text spans and their SGR/OSC 8 output
+│   └── wrap.rs    # word wrapping by display width
 ├── style.rs       # SGR colors and attributes
 ├── term.rs        # capability probe (one round-trip), raw mode, window size
 ├── kitty.rs       # kitty graphics transmission and Unicode placeholders
@@ -75,10 +83,9 @@ off and enable only what is used; put heavy optional functionality behind a carg
 
 ## Keeping files small
 
-Split a module before it grows past ~500 lines, along the existing boundaries: `render.rs`
-(already over) into per-block modules such as tables, lists and code blocks. When changing
-an oversized file, first move out the part being changed. Keep functions under 100 lines
-(clippy `too_many_lines`).
+Split a module before it grows past ~500 lines, along the existing boundaries: turn it
+into a directory module, as `render/` is. When changing an oversized file, first move out
+the part being changed. Keep functions under 100 lines (clippy `too_many_lines`).
 
 ## Testing
 
