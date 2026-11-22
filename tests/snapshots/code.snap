@@ -4,7 +4,6 @@ expression: "strip_ansi(&render(&md, &cfg))"
 ---
 Inline code and code with `backticks`.
 
-│ rust
 │ fn main() {
 │     println!("tab-indented");
 │ }
@@ -13,6 +12,5 @@ Inline code and code with `backticks`.
 
 │ indented code block
 
-│ mermaid
 │ graph TD
 │   A --> B

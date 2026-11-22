@@ -38,7 +38,9 @@ impl Renderer<'_> {
             return;
         };
         self.flush_inline();
+        let start = self.line_no;
         self.place_formula(&raster);
+        self.add_source(start, latex.trim(), false);
     }
 
     /// A ```` ```math ```` block; `false` shows it as code instead.

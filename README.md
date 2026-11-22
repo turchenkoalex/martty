@@ -3,8 +3,12 @@
 **Markdown, rendered properly, right in your terminal.**
 
 A tiny, fast Markdown viewer built for [Ghostty](https://ghostty.org), with real images,
-Mermaid diagrams, big headings and a `less`-style pager. [Website](https://turchenkoalex.github.io/martty/)
+Mermaid diagrams, big headings and a `less`-style pager.
 
+🌐 **Website: [turchenkoalex.github.io/martty](https://turchenkoalex.github.io/martty/)**,
+a one-page tour: what the rendered output looks like, the pager keys and how to install.
+
+[![Website](https://img.shields.io/badge/website-turchenkoalex.github.io%2Fmartty-f5a97f)](https://turchenkoalex.github.io/martty/)
 ![Rust](https://img.shields.io/badge/rust-2024_edition-orange?logo=rust)
 ![Terminal](https://img.shields.io/badge/terminal-Ghostty-6f42c1)
 ![Status](https://img.shields.io/badge/status-early_development-yellow)
@@ -27,8 +31,9 @@ of asterisks.
   Math.
 - 🎨 **Theme-aware.** Highlighted code, diagrams and headings take their colors from your
   terminal's palette, so they suit both light and dark themes.
-- 📜 **Built-in pager.** Scrolling, search, mouse wheel, zoomable and pannable diagrams,
-  and live re-layout when the window is resized.
+- 📜 **Built-in pager.** Scrolling, highlighted search, a table of contents, zoomable and
+  pannable diagrams, copying as plain text, following a file as you edit it, and live
+  re-layout when the window is resized.
 - 🪶 **Self-contained.** A single static binary: no browser, no Node, no runtime to install.
 
 ## Supported Markdown
@@ -45,7 +50,7 @@ of asterisks.
 | Tables | Column alignment (`:---:`, `---:`); a table wider than the screen shrinks its columns by content and wraps the text in its cells |
 | Footnotes | `[^1]` style |
 | Definition lists | `Term` followed by `: definition` lines |
-| Images | PNG, JPEG, GIF, WebP and SVG, local or (with the `remote` feature) from http(s); animated GIF and WebP play; a missing or unreadable image falls back to its alt text |
+| Images | PNG, JPEG, GIF, WebP and SVG, local or (with `--remote`) from https; animated GIF and WebP play; a missing or unreadable image falls back to its alt text |
 | Mermaid | ` ```mermaid ` blocks are rendered as diagrams, centered, with text at the terminal's size; click one to open it full screen |
 | Math | `$…$` inline, sitting on the text baseline; `$$…$$` and ` ```math ` blocks centered on their own rows. A formula latex-rust can't render shows as code |
 | Rules | `---` |
@@ -55,8 +60,26 @@ of asterisks.
 
 ## Installation
 
-martty is not published yet, so build it from source. You need a recent stable Rust
-toolchain with edition 2024 support (Rust 1.100+).
+### Prebuilt binaries (macOS)
+
+Each [release](https://github.com/turchenkoalex/martty/releases/latest) has binaries for
+Apple silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`), built with the
+default features:
+
+```sh
+mkdir -p ~/.local/bin
+curl -fsSL https://github.com/turchenkoalex/martty/releases/latest/download/martty-aarch64-apple-darwin.tar.gz \
+  | tar -xz -C ~/.local/bin --strip-components 1 martty-aarch64-apple-darwin/martty
+```
+
+The binaries are signed ad hoc, not with an Apple Developer ID. `curl` doesn't mark the
+file as downloaded, but one saved from a browser is quarantined and macOS refuses to run
+it; clear the flag with `xattr -d com.apple.quarantine martty`. Each archive has a
+`.sha256` next to it.
+
+### From source
+
+You need a recent stable Rust toolchain with edition 2024 support (Rust 1.100+).
 
 ```sh
 git clone https://github.com/turchenkoalex/martty.git
@@ -86,16 +109,6 @@ cargo install --path . --no-default-features
 cargo install --path . --no-default-features --features highlight
 ```
 
-One more is off by default, since with it viewing a document makes network requests:
-
-| Feature | Adds |
-|---|---|
-| `remote` | Images from `http(s)://` URLs via ureq and rustls. They are fetched in parallel before the document is shown (10 s timeout) and cached for a day in `~/Library/Caches/martty` (macOS) or `$XDG_CACHE_HOME/martty`; a stale copy is used when the network fails |
-
-```sh
-cargo install --path . --features remote
-```
-
 ## Usage
 
 ```sh
@@ -105,16 +118,19 @@ martty - < notes.md         # same, explicitly
 martty -p short.md          # always open the pager
 martty -P long.md | head    # never open the pager
 martty --width 72 notes.md  # lay out for 72 columns
+martty -w README.md         # reload whenever README.md is saved
 ```
 
 ```
-usage: martty [-p|--pager] [-P|--no-pager] [--width N] [FILE]
+usage: martty [-p|--pager] [-P|--no-pager] [-w|--follow] [--remote] [--width N] [FILE]
 ```
 
 | Flag | Meaning |
 |---|---|
 | `-p`, `--pager` | Always open the pager |
 | `-P`, `--no-pager` | Never open the pager; print straight to stdout |
+| `--remote` | Load `https://` images (see [Remote images](#remote-images)) |
+| `-w`, `--follow` | Open the pager and lay the file out again whenever it changes, keeping your place |
 | `--width N` | Lay out text for `N` columns instead of the terminal width (80 when it is unknown, as in a pipe) |
 | `-h`, `--help` | Show usage |
 
@@ -128,30 +144,62 @@ Try the bundled demo to see everything at once:
 cargo run --release -- demo.md
 ```
 
+### Remote images
+
+Images from `https://` URLs load only when you ask for them on each run with `--remote`
+or `MARTTY_REMOTE=1`; otherwise they show their alt text, and viewing a document makes no
+network requests. They are fetched in parallel before the document is shown (10 s
+timeout) and cached for a day in `~/Library/Caches/martty` (macOS) or
+`$XDG_CACHE_HOME/martty`; a stale copy is used when the network fails. A document is
+untrusted input, so fetching is fenced in:
+
+- `https` only, redirects included; `http://` images show their alt text.
+- No requests into your network: names resolving to loopback, private, link-local or
+  other non-public addresses are refused, checked after DNS.
+- At most 32 images and 64 MB per run, 16 MB per image; a response that says it is bigger,
+  or isn't an image (an HTML page), is dropped before its body is read.
+- The User-Agent is just `martty`, without a version.
+- A downloaded SVG may embed only `data:` images, never local files.
+- The cache drops files older than a week and keeps at most 100 MB.
+
 ## Pager keys
 
-The pager follows `less` conventions.
+The pager follows `less` conventions. `?` shows the keys in the pager.
 
 | Keys | Action |
 |---|---|
 | `j` `e` `↓` `Enter` `Ctrl-N` | Scroll down one line (`Enter` opens the selected link) |
-| `k` `y` `↑` `Ctrl-P` | Scroll up one line |
+| `k` `↑` `Ctrl-P` | Scroll up one line |
 | `Space` `f` `PgDn` `Ctrl-F` | Page down |
 | `b` `PgUp` `Ctrl-B` | Page up |
 | `d` `Ctrl-D` / `u` `Ctrl-U` | Half page down / up |
 | `g` `<` `Home` / `G` `>` `End` | Go to the top / bottom |
-| `/` | Search (smart case: case-sensitive only if the query has uppercase letters) |
+| `[` / `]` | Previous / next heading |
+| `o` `t` | Table of contents: `j`/`k` to move, `Enter` to go, `Esc` to close |
+| `/` | Search (smart case: case-sensitive only if the query has uppercase letters). Matches are highlighted and the status line counts them, as in `3/17` |
 | `n` / `N` | Next / previous match |
-| `h` `←` / `l` `→` | Pan wide images and diagrams left / right |
+| `Esc` | Drop the link selection, then the search highlight |
+| `h` `←` / `l` `→` | Pan wide images, diagrams, code and tables left / right (only `h` / `l` in a full-screen diagram) |
+| `w` | Switch wide code blocks and tables between wrapped (the default) and their natural width, panned with `h`/`l` |
 | `+` `=` / `-` `_` / `0` | Zoom images and diagrams in / out / reset |
 | `Tab` / `Shift-Tab` | Select the next / previous link, scrolling to it |
 | `Enter` | Open the selected link: `#heading` jumps to it, a relative `.md` file opens in the pager, anything else opens with `open` (`xdg-open` on Linux) |
 | `Backspace` `H` | Go back from an opened file or a full-screen diagram |
-| `Esc` | Drop the link selection |
 | `z` | Open the diagram on screen full screen |
-| `Esc` `q` | Close the full-screen diagram |
+| `z` `Space` `Esc` `q` | Close the full-screen diagram |
+| `←` / `→` | In a full-screen diagram: open the previous / next diagram of the document; going back lands on the one shown last |
+| `y` | Copy the code block on screen (or a diagram's Mermaid source) to the clipboard |
+| `c` / `C` | Copy the screen / the whole document as plain text |
+| `m` *letter* | Set a mark |
+| `'` *letter* / `''` | Go to a mark / back to where the last jump started |
+| `F` | Follow changes to the file, as `-w` does |
+| `?` | Show the keys |
 | `q` `Ctrl-C` | Quit |
 | Mouse wheel | Scroll |
+
+Copying goes through OSC 52 and gives the text as written rather than as drawn: quote
+bars, list markers and indents are left out, and code blocks, diagrams, images, formulas
+and headings drawn as images are replaced with their source, alt text or heading text.
 
 > [!TIP]
 > The pager leaves the mouse to Ghostty: select text and Cmd+click links as usual.
@@ -160,13 +208,15 @@ The pager follows `less` conventions.
 
 At startup martty sends the terminal a single round of queries to detect its features:
 theme colors, kitty graphics support, cell size in pixels and OSC 66 text sizing. If
-detection gets something wrong, override it with environment variables:
+detection gets something wrong, override it with environment variables. All of martty's
+settings start with `MARTTY_`:
 
 | Variable | Values | Effect |
 |---|---|---|
 | `MARTTY_IMAGES` | `0` / `1` | Disable or force images, diagrams and image headings |
+| `MARTTY_REMOTE` | `1` | Load `https://` images, as `--remote` does |
 | `MARTTY_TEXT_SIZING` | `0` / `1` | Disable or force OSC 66 text sizing for headings |
-| `NO_COLOR` | any non-empty | No colors: text keeps bold, italic and underline; images, diagrams and image headings are off, as with `MARTTY_IMAGES=0` |
+| `MARTTY_NO_COLOR` | `1` | No colors: text keeps bold, italic and underline; images, diagrams and image headings are off, as with `MARTTY_IMAGES=0` |
 
 When graphics are not available, martty falls back to plain styled text: diagrams and
 formulas show up as code and images as their alt text.
@@ -210,8 +260,8 @@ of lines and never re-sends pixels.
   not a goal.
 - Remote images are fetched before the document is shown, so a slow server delays the
   start (up to the 10 s timeout).
-- Headings drawn as images can't be copied as text. They will switch back to text once
-  Ghostty implements OSC 66.
+- Headings drawn as images can't be copied as text by selecting them with the mouse (`c`
+  and `C` copy them). They will switch back to text once Ghostty implements OSC 66.
 - Formulas are images too: they can't be copied as text.
 
 ## Development

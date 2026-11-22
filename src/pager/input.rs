@@ -1,14 +1,36 @@
 use super::keys::Key;
+use super::overlay::Overlay;
 use super::{Action, Pager};
 
 pub(super) const ZOOM_STEP: f32 = 1.25;
 pub(super) const ZOOM_RANGE: (f32, f32) = (0.25, 8.0);
 
 impl Pager<'_> {
+    /// Scrolls by `delta` lines, and further in the same direction while a
+    /// heading drawn as an image would be cut by the top or bottom edge, so
+    /// a two-row heading passes in one step.
     pub(super) fn scroll(&mut self, delta: isize, view_rows: usize) {
         let view = self.view_mut();
         let max_top = view.total().saturating_sub(view_rows);
-        view.top = view.top.saturating_add_signed(delta).min(max_top);
+        let mut top = view.top.saturating_add_signed(delta).min(max_top);
+        if delta != 0 {
+            // Each edge needs at most one extra line.
+            for _ in 0..2 {
+                if !view.cuts_heading(top, view_rows) {
+                    break;
+                }
+                let next = if delta > 0 {
+                    (top + 1).min(max_top)
+                } else {
+                    top.saturating_sub(1)
+                };
+                if next == top {
+                    break;
+                }
+                top = next;
+            }
+        }
+        view.top = top;
     }
 
     pub(super) fn zoom_by(&mut self, factor: f32) -> Action {
@@ -28,80 +50,173 @@ impl Pager<'_> {
     }
 
     /// The first diagram whose rows are on screen.
-    pub(super) fn visible_diagram(&self) -> Option<String> {
+    pub(super) fn visible_diagram(&self) -> Option<usize> {
         let view = self.view();
-        (view.top..view.top + self.view_rows())
-            .find_map(|i| view.diagram_at(i))
-            .map(str::to_owned)
+        (view.top..view.top + self.view_rows()).find_map(|i| view.diagram_at(i))
     }
 
     pub(super) fn handle(&mut self, key: Key) -> Action {
         self.message = None;
-        if let Some(input) = &mut self.prompt {
-            match key {
-                Key::Enter => {
-                    let query = std::mem::take(input);
-                    self.prompt = None;
-                    if !query.is_empty() {
-                        self.query = Some(query);
-                    }
-                    self.find(true);
-                }
-                Key::Esc | Key::Ctrl(3) => self.prompt = None,
-                Key::Backspace => {
-                    if input.pop().is_none() {
-                        self.prompt = None;
-                    }
-                }
-                Key::Char(c) => input.push(c),
-                _ => {}
-            }
+        if self.prompt.is_some() {
+            self.handle_prompt(key);
             return Action::Continue;
         }
+        if self.overlay.is_some() {
+            return self.handle_overlay(&key);
+        }
+        if let Some(kind) = self.pending.take() {
+            self.handle_mark(kind, &key);
+            return Action::Continue;
+        }
+        let fullscreen = self.view().is_diagram();
+        match key {
+            Key::Char('q' | 'Q' | 'z' | ' ') | Key::Esc if fullscreen => Action::Close,
+            Key::Left | Key::Right if fullscreen => Action::Switch(key == Key::Right),
+            Key::Esc if self.view().selected.is_some() => {
+                self.view_mut().selected = None;
+                Action::Continue
+            }
+            Key::Esc if self.query.is_some() => {
+                self.query = None;
+                Action::Continue
+            }
+            Key::Backspace | Key::Char('H') if self.views.len() > 1 => Action::Close,
+            Key::Enter if let Some(url) = self.selected_on_screen() => Action::Follow(url),
+            Key::Char('q' | 'Q') | Key::Ctrl(3) => Action::Quit,
+            Key::Char('+' | '=') => self.zoom_by(ZOOM_STEP),
+            Key::Char('-' | '_') => self.zoom_by(1.0 / ZOOM_STEP),
+            Key::Char('0') => {
+                let zoom = self.view().zoom;
+                self.zoom_by(1.0 / zoom)
+            }
+            Key::Char('z') if !fullscreen => match self.visible_diagram() {
+                Some(index) => Action::Open(index),
+                None => {
+                    self.message = Some("No diagram on screen".into());
+                    Action::Continue
+                }
+            },
+            Key::Char('w') => {
+                self.overflow = !self.overflow;
+                self.message = Some(if self.overflow {
+                    "Wide code and tables: pan with h/l".into()
+                } else {
+                    "Wide code and tables: wrapped".into()
+                });
+                Action::Reflow
+            }
+            Key::Char('y') => self.copy_code().map_or(Action::Continue, Action::Copy),
+            Key::Char('c') => Action::Copy(self.copy_screen(false)),
+            Key::Char('C') => Action::Copy(self.copy_screen(true)),
+            key => {
+                self.handle_move(&key);
+                Action::Continue
+            }
+        }
+    }
 
+    fn handle_prompt(&mut self, key: Key) {
+        let Some(input) = &mut self.prompt else {
+            return;
+        };
+        match key {
+            Key::Enter => {
+                let query = std::mem::take(input);
+                self.prompt = None;
+                if !query.is_empty() {
+                    self.query = Some(query);
+                }
+                self.find(true);
+            }
+            Key::Esc | Key::Ctrl(3) => self.prompt = None,
+            Key::Backspace => {
+                if input.pop().is_none() {
+                    self.prompt = None;
+                }
+            }
+            Key::Char(c) => input.push(c),
+            _ => {}
+        }
+    }
+
+    /// The letter after `m` (set a mark) or `'` (go to it).
+    fn handle_mark(&mut self, kind: char, key: &Key) {
+        let &Key::Char(c) = key else {
+            return;
+        };
+        let top = self.view().top;
+        if kind == 'm' {
+            if c.is_ascii_alphabetic() {
+                self.view_mut().marks.insert(c, top);
+                self.message = Some(format!("Mark {c} set"));
+            } else {
+                self.message = Some("Marks are letters a-z, A-Z".into());
+            }
+            return;
+        }
+        match self.view().marks.get(&c).copied() {
+            Some(line) => self.jump(line),
+            None => self.message = Some(format!("No mark {c}")),
+        }
+    }
+
+    /// Scrolling, panning, search, links, marks and the other keys that
+    /// only move around the view.
+    fn handle_move(&mut self, key: &Key) {
         let rows = self.view_rows();
         let page = rows as isize;
         let step = i64::try_from(self.size.cols / 4).unwrap_or(8).max(8);
-        let fullscreen = self.view().is_diagram();
         match key {
-            Key::Char('q' | 'Q') | Key::Esc if fullscreen => return Action::Close,
-            Key::Esc if self.view().selected.is_some() => self.view_mut().selected = None,
-            Key::Backspace | Key::Char('H') if self.views.len() > 1 => return Action::Close,
             Key::Tab => self.move_link(true, rows),
             Key::BackTab => self.move_link(false, rows),
-            Key::Enter if let Some(url) = self.selected_on_screen() => return Action::Follow(url),
-            Key::Char('q' | 'Q') | Key::Ctrl(3) => return Action::Quit,
-            Key::Char('+' | '=') => return self.zoom_by(ZOOM_STEP),
-            Key::Char('-' | '_') => return self.zoom_by(1.0 / ZOOM_STEP),
-            Key::Char('0') => {
-                let zoom = self.view().zoom;
-                return self.zoom_by(1.0 / zoom);
-            }
-            Key::Char('z') if !fullscreen => {
-                return match self.visible_diagram() {
-                    Some(src) => Action::Open(src),
-                    None => {
-                        self.message = Some("No diagram on screen".into());
-                        Action::Continue
-                    }
-                };
-            }
             Key::Char('h') | Key::Left => self.pan_by(-step),
             Key::Char('l') | Key::Right => self.pan_by(step),
             Key::Char('j' | 'e') | Key::Down | Key::Enter | Key::Ctrl(14) => self.scroll(1, rows),
-            Key::Char('k' | 'y') | Key::Up | Key::Ctrl(16) => self.scroll(-1, rows),
+            Key::Char('k') | Key::Up | Key::Ctrl(16) => self.scroll(-1, rows),
             Key::Char(' ' | 'f') | Key::PageDown | Key::Ctrl(6) => self.scroll(page, rows),
             Key::Char('b') | Key::PageUp | Key::Ctrl(2) => self.scroll(-page, rows),
             Key::Char('d') | Key::Ctrl(4) => self.scroll(page / 2, rows),
             Key::Char('u') | Key::Ctrl(21) => self.scroll(-page / 2, rows),
-            Key::Char('g' | '<') | Key::Home => self.view_mut().top = 0,
-            Key::Char('G' | '>') | Key::End => self.scroll(isize::MAX, rows),
+            Key::Char('g' | '<') | Key::Home => self.jump(0),
+            Key::Char('G' | '>') | Key::End => self.jump(usize::MAX),
+            Key::Char('[') => self.heading_step(false),
+            Key::Char(']') => self.heading_step(true),
+            Key::Char('o' | 't') => self.open_toc(),
+            Key::Char('?') => self.overlay = Some(Overlay::Help),
+            Key::Char(c @ ('m' | '\'')) => self.pending = Some(*c),
             Key::Char('/') => self.prompt = Some(String::new()),
             Key::Char('n') => self.find(true),
             Key::Char('N') => self.find(false),
+            Key::Char('F') => self.toggle_follow(),
             _ => {}
         }
-        Action::Continue
+    }
+
+    fn heading_step(&mut self, forward: bool) {
+        let view = self.view();
+        let mut lines = view.doc.headings.iter().map(|h| h.line);
+        let found = if forward {
+            lines.find(|&l| l > view.top)
+        } else {
+            lines.rev().find(|&l| l < view.top)
+        };
+        match found {
+            Some(line) => self.jump(line),
+            None => self.message = Some("No more headings".into()),
+        }
+    }
+
+    fn toggle_follow(&mut self) {
+        if !(0..self.views.len()).any(|d| self.path(d).is_some()) {
+            self.message = Some("Nothing to follow: the text came from stdin".into());
+            return;
+        }
+        self.follow = !self.follow;
+        self.message = Some(if self.follow {
+            "Following changes to the file".into()
+        } else {
+            "Stopped following the file".into()
+        });
     }
 
     /// Selects the next (or previous) link, starting from the screen when
@@ -145,41 +260,5 @@ impl Pager<'_> {
     pub(super) fn selected_on_screen(&self) -> Option<String> {
         let i = self.selected_index_on_screen()?;
         Some(self.view().links.get(i)?.url.clone())
-    }
-
-    /// Jumps so the next (or previous) matching line is at the top.
-    /// Smart case: the query is case-sensitive only if it has uppercase.
-    pub(super) fn find(&mut self, forward: bool) {
-        let Some(query) = self.query.clone() else {
-            return;
-        };
-        let sensitive = query.chars().any(char::is_uppercase);
-        let needle = if sensitive {
-            query.clone()
-        } else {
-            query.to_lowercase()
-        };
-        let view = self.view();
-        let hit = |i: &usize| {
-            let line = &view.plain[*i];
-            if sensitive {
-                line.contains(&needle)
-            } else {
-                line.to_lowercase().contains(&needle)
-            }
-        };
-        let found = if forward {
-            (view.top + 1..view.total()).find(hit)
-        } else {
-            (0..view.top).rev().find(hit)
-        };
-        match found {
-            Some(i) => {
-                let rows = self.view_rows();
-                self.view_mut().top = 0;
-                self.scroll(isize::try_from(i).unwrap_or(isize::MAX), rows);
-            }
-            None => self.message = Some(format!("Pattern not found: {query}")),
-        }
     }
 }

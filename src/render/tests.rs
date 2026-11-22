@@ -41,6 +41,7 @@ fn plain_config() -> Config {
     Config {
         width: 40,
         color: true,
+        overflow: false,
         text_sizing: false,
         code_bg: None,
         images: None,
@@ -80,6 +81,7 @@ fn render_should_keep_padded_inline_code_attached_to_punctuation() {
     let cfg = Config {
         width: 40,
         color: true,
+        overflow: false,
         text_sizing: false,
         code_bg: Some(Color::Ansi(0)),
         images: None,
@@ -97,6 +99,7 @@ fn images_config() -> Config {
     Config {
         width: 40,
         color: true,
+        overflow: false,
         text_sizing: false,
         code_bg: None,
         images: Some(Images {
@@ -365,6 +368,27 @@ fn render_should_show_unknown_formula_as_code() {
     assert_eq!(strip_ansi(&doc.to_ansi()), "\\notacommand\n");
 }
 
+#[test]
+fn render_should_put_code_language_at_the_right_of_the_panel() {
+    let cfg = Config {
+        width: 20,
+        code_bg: Some(Color::Ansi(0)),
+        ..plain_config()
+    };
+    let lines: Vec<String> = strip_ansi(&render("```rust\nfn x() {}\n```", &cfg))
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "               rust ",
+            " fn x() {}          ",
+            "                    "
+        ]
+    );
+}
+
 /// Every `tests/fixtures/*.md` rendered as plain text and compared with its
 /// snapshot in `tests/snapshots`. Review changes with `cargo insta review`,
 /// or accept them with `INSTA_UPDATE=always cargo test`.
@@ -394,4 +418,55 @@ fn render_should_match_fixture_snapshots() {
             insta::assert_snapshot!(name, strip_ansi(&render(&md, &cfg)));
         }
     });
+}
+
+#[test]
+fn render_should_leave_wide_code_unwrapped_with_overflow() {
+    let cfg = Config {
+        width: 20,
+        overflow: true,
+        ..plain_config()
+    };
+    let doc = super::render("```\nlet long_name = some_function(argument);\n```", &cfg);
+    assert_eq!(doc.lines.len(), 1);
+    assert_eq!(
+        doc.lines[0].wide,
+        Some(Wide {
+            cols: 42,
+            visible: 20
+        })
+    );
+}
+
+#[test]
+fn render_should_keep_table_columns_natural_with_overflow() {
+    let md = "| a | b |\n|---|---|\n| one two three four | five six seven eight |";
+    let cfg = Config {
+        width: 20,
+        overflow: true,
+        ..plain_config()
+    };
+    let doc = super::render(md, &cfg);
+    // Top border, header, rule, one unwrapped row, bottom border.
+    assert_eq!(doc.lines.len(), 5);
+    assert!(doc.lines.iter().all(|l| l.wide.is_some()));
+}
+
+#[test]
+fn render_should_record_code_source_and_heading_levels() {
+    let doc = super::render("## Title\n\n```rust\nfn main() {}\n```", &plain_config());
+    assert_eq!(doc.headings[0].level, 2);
+    assert_eq!(doc.headings[0].text, "Title");
+    let code = &doc.sources[0];
+    assert!(code.code);
+    assert_eq!(code.text, "fn main() {}");
+    assert!(code.lines.contains(&(doc.lines.len() - 1)));
+}
+
+#[test]
+fn render_should_record_quote_prefix_length() {
+    let doc = super::render("> quoted", &plain_config());
+    let line = &doc.lines[0];
+    assert!(line.text[..line.prefix_len].contains('▎'));
+    assert_eq!(strip_ansi(&line.text[line.prefix_len..]), "quoted");
 }

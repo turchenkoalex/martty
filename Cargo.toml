@@ -19,7 +19,7 @@ serde_json = { version = "1.0.154", optional = true }
 # Oniguruma, not fancy-regex: compiling a grammar on first use is ~7× faster.
 syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "regex-onig"], optional = true }
 unicode-width = "0.2.3"
-ureq = { version = "3.5.2", default-features = false, features = ["rustls"], optional = true }
+ureq = { version = "3.5.2", default-features = false, features = ["rustls"] }
 zune-jpeg = "0.5.9"
 
 [features]
@@ -29,12 +29,8 @@ highlight = ["dep:syntect"]
 # LaTeX formulas as images (latex-rust with STIX Two Math, about 2.5 MB):
 # without it they show as code.
 math = ["dep:latex-rust"]
-# Images from http(s) URLs (ureq + rustls), cached on disk. Off by default:
-# viewing a document would otherwise make network requests.
-remote = ["dep:ureq"]
 # Mermaid diagrams (merman, about 10 MB): without it they show as code.
 mermaid = ["dep:merman", "dep:serde_json"]
-ureq = ["dep:ureq"]
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }

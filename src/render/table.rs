@@ -32,8 +32,12 @@ impl Renderer<'_> {
             .collect();
         // Each column takes its content plus a space on both sides and a
         // border on the right; the table adds one border on the left.
-        let budget = self.avail().saturating_sub(3 * cols + 1);
-        let widths = column_widths(&natural, &words, budget);
+        let widths = if self.cfg.overflow {
+            natural
+        } else {
+            let budget = self.avail().saturating_sub(3 * cols + 1);
+            column_widths(&natural, &words, budget)
+        };
 
         let border = Style::fg(Color::Ansi(8));
         let rule = |l: &str, m: &str, r: &str| {
@@ -66,10 +70,10 @@ impl Renderer<'_> {
         // Once a cell wraps, rows can't be told apart by lines alone.
         let wrapped = rows.iter().flatten().any(|lines| lines.len() > 1);
 
-        self.emit_line(&rule("┌", "┬", "┐"));
+        self.emit_wide_line(&rule("┌", "┬", "┐"));
         for (r, cells) in rows.iter().enumerate() {
             if r > 0 && (r == table.header_rows || wrapped) {
-                self.emit_line(&rule("├", "┼", "┤"));
+                self.emit_wide_line(&rule("├", "┼", "┤"));
             }
             let height = cells.iter().map(Vec::len).max().unwrap_or(0).max(1);
             for n in 0..height {
@@ -87,10 +91,10 @@ impl Renderer<'_> {
                     line.push(Span::new(" ".repeat(gap - left + 1), Style::default()));
                     line.push(Span::new("│", border.clone()));
                 }
-                self.emit_line(&line);
+                self.emit_wide_line(&line);
             }
         }
-        self.emit_line(&rule("└", "┴", "┘"));
+        self.emit_wide_line(&rule("└", "┴", "┘"));
     }
 }
 

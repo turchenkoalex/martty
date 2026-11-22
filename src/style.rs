@@ -116,7 +116,7 @@ impl Style {
         color(out, prev.underline_color, self.underline_color, 58);
     }
 
-    /// The style with colors removed, for `NO_COLOR`.
+    /// The style with colors removed, for `MARTTY_NO_COLOR`.
     pub fn without_colors(&self) -> Self {
         Self {
             fg: None,

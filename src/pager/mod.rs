@@ -10,14 +10,20 @@
 //! `h`/`l` by redrawing their placeholder rows from a later image column —
 //! the image itself is not re-sent.
 //!
+//! With following on (`-w`, `F`), the file is checked for changes on every
+//! wake-up and laid out again when it changes, keeping the place by content.
+//!
 //! The mouse is left to Ghostty, so selecting text and Cmd+clicking OSC 8
 //! links work as anywhere else. Alternate scroll mode (DEC 1007) makes
 //! Ghostty turn the wheel into arrow keys on the alternate screen.
 
+mod copy;
 mod draw;
 mod input;
 mod keys;
 mod links;
+mod overlay;
+mod search;
 #[cfg(test)]
 mod tests;
 mod view;
@@ -26,12 +32,14 @@ use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use crate::kitty;
 use crate::render::Document;
 use crate::term::{self, RawMode, Size};
 
 use keys::read_keys;
+use overlay::Overlay;
 use view::{Kind, View};
 
 const ENTER: &str = "\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[?1007h";
@@ -45,14 +53,41 @@ pub enum Layout<'a> {
     Diagram(&'a str),
 }
 
+/// How to lay a view out.
+#[derive(Debug, Clone, Copy)]
+pub struct Params {
+    pub size: Size,
+    /// Image and diagram zoom; 1.0 fits the screen.
+    pub zoom: f32,
+    /// Code and tables at their natural width, panned instead of wrapped.
+    pub overflow: bool,
+}
+
+/// What the pager shows and how it starts.
+pub struct Options<'a> {
+    pub title: &'a str,
+    /// The file shown, for following its changes; `None` for stdin.
+    pub file: Option<&'a Path>,
+    /// Follow changes from the start (`-w`).
+    pub follow: bool,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum Action {
     Continue,
     Quit,
     /// Re-render the current view (zoom changed).
     Relayout,
-    /// Open this diagram source full screen.
-    Open(String),
+    /// Re-render every view (wrapping of wide blocks changed).
+    Reflow,
+    /// Put this text on the clipboard.
+    Copy(String),
+    /// Open full screen this diagram of the current view (an index into
+    /// its `diagrams`).
+    Open(usize),
+    /// Switch the full-screen diagram to the next (`true`) or previous one
+    /// in the document.
+    Switch(bool),
     /// Go back from a full-screen diagram or an opened file.
     Close,
     /// Open a link target: `#anchor`, a Markdown file, or anything else
@@ -60,28 +95,40 @@ enum Action {
     Follow(String),
 }
 
-/// Runs the pager until the user quits. `render` lays out the document or a
-/// single diagram for a screen size and diagram zoom. `pending` holds keys
-/// already read from the tty (during the capability probe), handled first.
+/// Runs the pager until the user quits. `render` lays out the document, a
+/// linked file or a single diagram. `pending` holds keys already read from
+/// the tty (during the capability probe), handled first.
 pub fn run(
-    title: &str,
+    options: &Options<'_>,
     doc: Document,
     pending: &[u8],
-    mut render: impl FnMut(Layout<'_>, Size, f32) -> Document,
+    mut render: impl FnMut(Layout<'_>, Params) -> Document,
 ) -> io::Result<()> {
     let mut tty = OpenOptions::new().read(true).write(true).open("/dev/tty")?;
     let _raw = RawMode::keys(tty.as_raw_fd())?;
-    let mut pager = Pager::new(title, term::size(), doc);
+    let mut pager = Pager::new(options.title, term::size(), doc);
+    pager.file = options.file.map(Path::to_path_buf);
+    pager.follow = options.follow && pager.file.is_some();
+    pager.views[0].modified = pager.file.as_deref().and_then(modified);
     pager.enter()?;
 
     let mut keys = keys::parse_keys(pending);
+    // Frames are drawn only after input or a resize, not on every wake-up.
+    let mut dirty = true;
     loop {
         for key in keys {
+            dirty = true;
             if pager.apply(key, &mut render)? == Action::Quit {
                 return Ok(());
             }
         }
-        pager.redraw()?;
+        if pager.reload_changed(&mut render)? {
+            dirty = true;
+        }
+        if dirty {
+            pager.redraw()?;
+            dirty = false;
+        }
         keys = match read_keys(&mut tty)? {
             Some(keys) => keys,
             None => {
@@ -91,6 +138,7 @@ pub fn run(
                     for depth in 0..pager.views.len() {
                         pager.relayout(depth, &mut render)?;
                     }
+                    dirty = true;
                 }
                 Vec::new()
             }
@@ -101,12 +149,22 @@ pub fn run(
 struct Pager<'a> {
     title: &'a str,
     size: Size,
-    /// Never empty: the document, then optionally a full-screen diagram.
+    /// Never empty: the document, then files opened from links and a
+    /// full-screen diagram on top of it.
     views: Vec<View>,
     query: Option<String>,
     /// Search input being typed, when the `/` prompt is open.
     prompt: Option<String>,
     message: Option<String>,
+    overlay: Option<Overlay>,
+    /// `m` or `'` typed, waiting for the mark's letter.
+    pending: Option<char>,
+    /// Lay code and tables out unwrapped, for panning (`w`).
+    overflow: bool,
+    /// Reload views whose file changed (`-w`, `F`).
+    follow: bool,
+    /// The document's file; `None` when it came from stdin.
+    file: Option<PathBuf>,
     /// Set once the alternate screen is entered; restored on drop.
     active: bool,
 }
@@ -120,6 +178,11 @@ impl<'a> Pager<'a> {
             query: None,
             prompt: None,
             message: None,
+            overlay: None,
+            pending: None,
+            overflow: false,
+            follow: false,
+            file: None,
             active: false,
         }
     }
@@ -169,26 +232,132 @@ impl<'a> Pager<'a> {
     fn apply(
         &mut self,
         key: keys::Key,
-        render: &mut impl FnMut(Layout<'_>, Size, f32) -> Document,
+        render: &mut impl FnMut(Layout<'_>, Params) -> Document,
     ) -> io::Result<Action> {
         let action = self.handle(key);
         match &action {
             Action::Continue | Action::Quit => {}
             Action::Relayout => self.relayout(self.views.len() - 1, render)?,
-            Action::Open(source) => {
-                let doc = render(Layout::Diagram(source), self.size, 1.0);
-                self.push(View::new(doc, Kind::Diagram(source.clone())))?;
+            Action::Reflow => {
+                for depth in 0..self.views.len() {
+                    self.relayout(depth, render)?;
+                }
             }
+            Action::Copy(text) => write_out(&copy::osc52(text))?,
+            Action::Open(index) => self.open_diagram(*index, render)?,
+            Action::Switch(forward) => self.switch_diagram(*forward, render)?,
             Action::Close => self.pop()?,
             Action::Follow(url) => self.follow(url, render)?,
         }
+        self.refresh_hits();
         Ok(action)
+    }
+
+    /// Opens diagram `index` of the current view full screen, scrolling
+    /// the view to it first, so going back lands on the diagram last shown.
+    fn open_diagram(
+        &mut self,
+        index: usize,
+        render: &mut impl FnMut(Layout<'_>, Params) -> Document,
+    ) -> io::Result<()> {
+        let rows = self.view_rows();
+        let view = self.view_mut();
+        let Some((id, source)) = view.doc.diagrams.get(index).cloned() else {
+            return Ok(());
+        };
+        let line = view
+            .doc
+            .lines
+            .iter()
+            .position(|l| l.image.is_some_and(|i| i.id == id));
+        if let Some(line) = line.filter(|&l| l < view.top || l >= view.top + rows) {
+            view.top = line.min(view.total().saturating_sub(rows));
+        }
+        let doc = render(Layout::Diagram(&source), self.params(1.0));
+        let mut diagram = View::new(doc, Kind::Diagram(source));
+        diagram.diagram = Some(index);
+        self.push(diagram)
+    }
+
+    /// Replaces the full-screen diagram with its neighbour in the view
+    /// below. Diagrams are rendered from their source when shown, so this
+    /// needs nothing rasterized in the document.
+    fn switch_diagram(
+        &mut self,
+        forward: bool,
+        render: &mut impl FnMut(Layout<'_>, Params) -> Document,
+    ) -> io::Result<()> {
+        let depth = self.views.len();
+        let (Some(current), Some(parent)) = (self.view().diagram, depth.checked_sub(2)) else {
+            return Ok(());
+        };
+        let count = self.views[parent].doc.diagrams.len();
+        let next = if forward {
+            Some(current + 1).filter(|&n| n < count)
+        } else {
+            current.checked_sub(1)
+        };
+        let Some(next) = next else {
+            let end = if forward { "last" } else { "first" };
+            self.message = Some(format!("This is the {end} diagram"));
+            return Ok(());
+        };
+        self.pop()?;
+        self.open_diagram(next, render)
+    }
+
+    fn params(&self, zoom: f32) -> Params {
+        Params {
+            size: self.size,
+            zoom,
+            overflow: self.overflow,
+        }
+    }
+
+    /// The file the view at `depth` shows, if any.
+    fn path(&self, depth: usize) -> Option<&Path> {
+        match &self.views[depth].kind {
+            Kind::Document => self.file.as_deref(),
+            Kind::File(path) => Some(path),
+            Kind::Diagram(_) => None,
+        }
+    }
+
+    /// Lays out again the views whose file changed, when following.
+    /// Returns whether any did.
+    fn reload_changed(
+        &mut self,
+        render: &mut impl FnMut(Layout<'_>, Params) -> Document,
+    ) -> io::Result<bool> {
+        if !self.follow {
+            return Ok(false);
+        }
+        let mut changed = false;
+        for depth in 0..self.views.len() {
+            let time = self.path(depth).and_then(modified);
+            if time.is_some() && time != self.views[depth].modified {
+                self.relayout(depth, render)?;
+                changed = true;
+            }
+        }
+        if changed {
+            self.refresh_hits();
+        }
+        Ok(changed)
+    }
+
+    /// Scrolls `line` to the top, remembering where the jump started (`''`).
+    fn jump(&mut self, line: usize) {
+        let rows = self.view_rows();
+        let view = self.view_mut();
+        view.marks.insert('\'', view.top);
+        view.top = line.min(view.total().saturating_sub(rows));
     }
 
     fn follow(
         &mut self,
         url: &str,
-        render: &mut impl FnMut(Layout<'_>, Size, f32) -> Document,
+        render: &mut impl FnMut(Layout<'_>, Params) -> Document,
     ) -> io::Result<()> {
         if let Some(anchor) = url.strip_prefix('#') {
             self.jump_to(anchor);
@@ -211,8 +380,10 @@ impl<'a> Pager<'a> {
             self.message = Some(format!("No such file: {}", path.display()));
             return Ok(());
         }
-        let doc = render(Layout::File(&path), self.size, 1.0);
-        self.push(View::new(doc, Kind::File(path)))?;
+        let doc = render(Layout::File(&path), self.params(1.0));
+        let mut view = View::new(doc, Kind::File(path.clone()));
+        view.modified = modified(&path);
+        self.push(view)?;
         if let Some(anchor) = fragment {
             self.jump_to(anchor);
         }
@@ -222,42 +393,45 @@ impl<'a> Pager<'a> {
     /// Scrolls the heading with this anchor to the top.
     fn jump_to(&mut self, anchor: &str) {
         match self.view().anchor_line(anchor) {
-            Some(line) => {
-                let rows = self.view_rows();
-                self.view_mut().top = 0;
-                self.scroll(isize::try_from(line).unwrap_or(isize::MAX), rows);
-            }
+            Some(line) => self.jump(line),
             None => self.message = Some(format!("No heading #{anchor}")),
         }
     }
 
-    /// Re-renders the view at `depth`, keeping its relative position.
+    /// Re-renders the view at `depth`, keeping the place by content.
     fn relayout(
         &mut self,
         depth: usize,
-        render: &mut impl FnMut(Layout<'_>, Size, f32) -> Document,
+        render: &mut impl FnMut(Layout<'_>, Params) -> Document,
     ) -> io::Result<()> {
-        let size = self.size;
-        let view = &mut self.views[depth];
-        let kind = view.kind.clone();
-        let layout = match &kind {
-            Kind::Document => Layout::Document,
-            Kind::File(path) => Layout::File(path),
-            Kind::Diagram(src) => Layout::Diagram(src),
+        let rows = self.view_rows();
+        let params = self.params(self.views[depth].zoom);
+        let path = self.path(depth).map(Path::to_path_buf);
+        let old = &self.views[depth];
+        let doc = match &old.kind {
+            Kind::Document => render(Layout::Document, params),
+            Kind::File(path) => render(Layout::File(path), params),
+            Kind::Diagram(src) => render(Layout::Diagram(src), params),
         };
-        let doc = render(layout, size, view.zoom);
-        let mut out = free_images(&view.doc);
+        let mut out = free_images(&old.doc);
         out.push_str(&doc.preamble);
         write_out(&out)?;
 
-        let rows = size.rows.saturating_sub(1).max(1);
-        let anchor = view.top as f64 / view.total().max(1) as f64;
-        let (zoom, pan) = (view.zoom, view.pan);
-        *view = View::new(doc, kind);
-        view.zoom = zoom;
-        let max_top = view.total().saturating_sub(rows);
-        view.top = ((anchor * view.total() as f64) as usize).min(max_top);
-        view.pan = pan.min(view.doc.max_pan());
+        let mut view = View::new(doc, old.kind.clone());
+        view.zoom = old.zoom;
+        view.diagram = old.diagram;
+        view.top = view
+            .follow_line(old, old.top)
+            .min(view.total().saturating_sub(rows));
+        view.pan = old.pan.min(view.doc.max_pan());
+        view.marks = old
+            .marks
+            .iter()
+            .map(|(&c, &line)| (c, view.follow_line(old, line)))
+            .collect();
+        view.current_hit = old.current_hit.map(|line| view.follow_line(old, line));
+        view.modified = path.as_deref().and_then(modified);
+        self.views[depth] = view;
         Ok(())
     }
 }
@@ -289,4 +463,8 @@ fn free_images(doc: &Document) -> String {
         kitty::write_delete(&mut out, id);
     }
     out
+}
+
+fn modified(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }

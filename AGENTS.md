@@ -44,22 +44,26 @@ src/
 │   ├── highlight.rs # syntect scopes → palette colors (feature `highlight`)
 │   ├── images.rs  # images, diagrams and image headings placed via kitty
 │   ├── span.rs    # styled text spans and their SGR/OSC 8 output
+│   ├── slice.rs   # cutting a column range out of an ANSI line, for panning
 │   └── wrap.rs    # word wrapping by display width
 ├── style.rs       # SGR colors and attributes
 ├── term.rs        # capability probe (one round-trip), raw mode, window size
 ├── kitty.rs       # kitty graphics transmission and Unicode placeholders
 ├── diacritics.rs  # generated row/column diacritics table, don't edit by hand
 ├── picture/       # image formats: sniffing, JPEG/GIF/WebP decoding, SVG, downscaling
-├── remote.rs      # http(s) images with a disk cache (feature `remote`)
+├── remote.rs      # https images, opt-in per run, fenced in; disk cache
 ├── mermaid.rs     # merman → SVG → resvg → kitty (feature `mermaid`)
 ├── math.rs        # LaTeX → latex-rust SVG → resvg → kitty (feature `math`)
 ├── heading.rs     # H1–H3 rasterized with fontdue + bundled JetBrains Mono
 └── pager/         # alternate-screen pager
-    ├── mod.rs     # `run` loop, view stack, relayout, terminal enter/leave
-    ├── view.rs    # one view: document, scroll, pan, zoom, search text
+    ├── mod.rs     # `run` loop, view stack, relayout, following files, terminal enter/leave
+    ├── view.rs    # one view: document, scroll, pan, zoom, marks; position across relayouts
+    ├── search.rs  # matches, their highlight and the counter
+    ├── overlay.rs # key help and the table of contents
+    ├── copy.rs    # OSC 52 and plain-text copies of code, the screen, the document
     ├── keys.rs    # reading the tty and keys
     ├── links.rs   # links found by OSC 8, Tab selection highlight, opening
-    ├── input.rs   # key bindings, scrolling, search, zoom, pan
+    ├── input.rs   # key bindings, scrolling, marks, zoom, pan
     └── draw.rs    # frame and status line
 ```
 

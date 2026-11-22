@@ -1,8 +1,12 @@
 use std::fs::File;
 use std::io::{self, Read};
 use std::os::fd::AsRawFd;
+use std::time::Duration;
 
-const POLL_MS: i32 = 200;
+use crate::term::wait_readable;
+
+/// How often the pager wakes up without input, to notice a resize.
+const POLL: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Key {
@@ -24,15 +28,9 @@ pub(super) enum Key {
     Esc,
 }
 
-/// Waits up to `POLL_MS` for input. `None` on timeout.
+/// Waits up to `POLL` for input. `None` on timeout.
 pub(super) fn read_keys(tty: &mut File) -> io::Result<Option<Vec<Key>>> {
-    let mut pfd = libc::pollfd {
-        fd: tty.as_raw_fd(),
-        events: libc::POLLIN,
-        revents: 0,
-    };
-    // SAFETY: a single valid pollfd.
-    if unsafe { libc::poll(&mut pfd, 1, POLL_MS) } <= 0 {
+    if !wait_readable(tty.as_raw_fd(), POLL) {
         return Ok(None);
     }
     let mut buf = [0u8; 1024];

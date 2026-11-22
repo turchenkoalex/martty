@@ -49,6 +49,16 @@ impl Picture {
     /// Recognizes the format by content (SVG also by extension) and reads
     /// the size. `path` is where the file came from, for SVG references.
     pub fn new(data: Vec<u8>, path: &Path) -> Option<Self> {
+        Self::with_refs(data, path, svg::Refs::Local(path.parent()))
+    }
+
+    /// An image downloaded from `name` (the URL's path): an SVG may embed
+    /// only `data:` images, never local files.
+    pub fn new_remote(data: Vec<u8>, name: &Path) -> Option<Self> {
+        Self::with_refs(data, name, svg::Refs::DataOnly)
+    }
+
+    fn with_refs(data: Vec<u8>, path: &Path, refs: svg::Refs<'_>) -> Option<Self> {
         if data.len() > MAX_BYTES {
             return None;
         }
@@ -56,7 +66,7 @@ impl Picture {
         let (size, svg) = match format {
             Format::Png => (kitty::png_size(&data)?, None),
             Format::Svg => {
-                let tree = svg::parse(&data, path.parent())?;
+                let tree = svg::parse(&data, refs)?;
                 let size = tree.size();
                 let px = (size.width().ceil() as u32, size.height().ceil() as u32);
                 (px, Some(tree))

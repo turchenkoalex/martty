@@ -160,12 +160,12 @@ fn css_px(cell: (u32, u32)) -> f32 {
     cell.1 as f32 / 1.25 / 16.0
 }
 
-/// Reads and recognizes the image at `url`: a local path, or with the
-/// `remote` feature an http(s) URL.
+/// Reads and recognizes the image at `url`: a local path or an http(s) URL.
 fn load(base: &Path, url: &str) -> Option<Picture> {
-    if let Some(data) = crate::remote::fetch(url) {
+    if crate::remote::is_remote(url) {
+        let data = crate::remote::fetch(url)?;
         let name = url.split(['?', '#']).next().unwrap_or(url);
-        return Picture::new(data, Path::new(name));
+        return Picture::new_remote(data, Path::new(name));
     }
     let path = resolve(base, url)?;
     Picture::new(std::fs::read(&path).ok()?, &path)

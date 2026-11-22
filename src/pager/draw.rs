@@ -1,9 +1,10 @@
 use std::fmt::Write as _;
 
-use unicode_width::UnicodeWidthChar;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::Pager;
 use super::links;
+use super::overlay::Overlay;
 use super::view::Kind;
 
 impl Pager<'_> {
@@ -33,31 +34,44 @@ impl Pager<'_> {
         // Each row is erased (EL) before it is drawn, not after: with
         // autowrap off (DEC 7) the cursor stays on the last column once a
         // full-width line is written, and EL would erase that column too.
+        let overlay = self.overlay.as_ref().map(|o| self.overlay_rows(o));
         for row in 0..self.view_rows() {
             let _ = write!(out, "\x1b[{};1H\x1b[0m\x1b[K", row + 1);
+            if let Some(rows) = &overlay {
+                out.push_str(rows.get(row).map_or("", String::as_str));
+                out.push_str("\x1b[0m");
+                continue;
+            }
             let index = row.checked_sub(top_margin).map(|r| view.top + r);
             if let Some((index, line)) = index.and_then(|i| Some((i, view.doc.lines.get(i)?))) {
                 let _ = write!(out, "{:left$}", "");
-                let text = line.panned(view.pan);
-                match view.selected_range(index) {
-                    Some(range) => out.push_str(&links::highlight(&text, &range)),
-                    None => out.push_str(&text),
+                let ranges = self.marked_ranges(index);
+                if ranges.is_empty() {
+                    out.push_str(&line.panned(view.pan));
+                } else {
+                    let marked = links::highlight_all(&line.text, ranges);
+                    out.push_str(&line.pan_text(&marked, view.pan));
                 }
             }
             out.push_str("\x1b[0m");
         }
 
+        // Padded to the full width, so the reversed bar spans the screen.
+        let row = self.size.rows.max(1);
+        let status = truncate(&self.status(), self.size.cols);
+        let used = status.width();
+        let pad = self.size.cols.saturating_sub(used);
         let _ = write!(
             out,
-            "\x1b[{};1H\x1b[0m\x1b[K\x1b[7m{}\x1b[0m",
-            self.size.rows.max(1),
-            truncate(&self.status(), self.size.cols)
+            "\x1b[{row};1H\x1b[0m\x1b[K\x1b[7m{status}{:pad$}\x1b[0m",
+            ""
         );
-        out.push_str(if self.prompt.is_some() {
-            "\x1b[?25h"
+        if self.prompt.is_some() {
+            // The cursor goes back to the end of the typed query.
+            let _ = write!(out, "\x1b[{row};{}H\x1b[?25h", used + 1);
         } else {
-            "\x1b[?25l"
-        });
+            out.push_str("\x1b[?25l");
+        }
         out.push_str("\x1b[?2026l");
     }
 
@@ -68,6 +82,15 @@ impl Pager<'_> {
         if let Some(msg) = &self.message {
             return msg.clone();
         }
+        match (&self.overlay, self.pending) {
+            (Some(Overlay::Help), _) => return " Keys  · any key closes".into(),
+            (Some(Overlay::Toc { .. }), _) => {
+                return " Contents  · j/k move · Enter go · Esc close".into();
+            }
+            (None, Some('m')) => return " Set mark: type a letter".into(),
+            (None, Some(_)) => return " Go to mark: type a letter, or ' to go back".into(),
+            (None, None) => {}
+        }
         let view = self.view();
         let mut extra = String::new();
         if (view.zoom - 1.0).abs() > f32::EPSILON {
@@ -76,9 +99,24 @@ impl Pager<'_> {
         if view.doc.max_pan() > 0 {
             let _ = write!(extra, "  ←{}/{}→", view.pan, view.doc.max_pan());
         }
+        if let Some(counter) = self.hit_counter() {
+            let _ = write!(extra, "  {counter}");
+        }
+        if self.follow {
+            extra.push_str("  following");
+        }
         if view.is_diagram() {
+            let count = self
+                .views
+                .len()
+                .checked_sub(2)
+                .map_or(0, |d| self.views[d].doc.diagrams.len());
+            let number = view
+                .diagram
+                .map(|i| format!(" {}/{count}", i + 1))
+                .unwrap_or_default();
             return format!(
-                " {} › diagram{extra}  · q/Esc back · +/- zoom · hjkl move",
+                " {} › diagram{number}{extra}  · z/Space/Esc back · ←/→ other diagrams · +/- zoom · hjkl move",
                 self.title
             );
         }
@@ -101,7 +139,7 @@ impl Pager<'_> {
         let last = (view.top + self.view_rows()).min(total);
         let pct = (last * 100).checked_div(total).unwrap_or(100);
         format!(
-            " {title}  {}-{}/{}  {pct}%{extra}  · q quit{back} · / search · Tab links · z diagram · +/- zoom",
+            " {title}  {}-{}/{}  {pct}%{extra}  · q quit{back} · / search · o contents · ? help",
             (view.top + 1).min(total),
             last,
             total

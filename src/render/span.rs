@@ -34,7 +34,7 @@ pub(super) fn spans_width(spans: &[Span]) -> usize {
 pub(super) struct Pen {
     /// Style and link the terminal has right now.
     current: Style,
-    /// `NO_COLOR`: colors are dropped, other attributes kept.
+    /// `MARTTY_NO_COLOR`: colors are dropped, other attributes kept.
     no_color: bool,
 }
 

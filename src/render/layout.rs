@@ -2,9 +2,9 @@ use std::mem;
 
 use pulldown_cmark::BlockQuoteKind;
 
-use super::Renderer;
 use super::span::{Pen, Span, spans_width};
 use super::wrap::wrap;
+use super::{Renderer, Wide};
 use crate::style::{Color, Style};
 
 /// A block quote or list item: what to print on its first line and on the rest.
@@ -93,7 +93,13 @@ impl Renderer<'_> {
             }
         }
         for image in &images {
+            let start = self.line_no;
             let shown = self.cfg.images.is_some() && self.emit_image(&image.url);
+            if shown {
+                let alt = spans.get(image.alt.clone()).unwrap_or_default();
+                let alt: String = alt.iter().map(|s| s.text.as_str()).collect();
+                self.add_source(start, alt.trim(), false);
+            }
             if only_images && !shown {
                 let alt = spans.get(image.alt.clone()).unwrap_or_default();
                 for line in wrap(alt, self.avail()) {
@@ -119,13 +125,33 @@ impl Renderer<'_> {
         self.end_line();
     }
 
+    /// A line of code or table that may be wider than the available width
+    /// (`Config::overflow`); the pager pans it.
+    pub(super) fn emit_wide_line(&mut self, content: &[Span]) {
+        let cols = spans_width(content);
+        let visible = self.avail();
+        if cols > visible {
+            let to_u32 = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+            let wide = Wide {
+                cols: to_u32(cols),
+                visible: to_u32(visible),
+            };
+            self.wide_rows.push((self.line_no, wide));
+        }
+        self.emit_line(content);
+    }
+
     pub(super) fn write_prefix(&mut self) {
+        let start = self.out.len();
         for c in &mut self.containers {
             let prefix = if c.used { &c.rest } else { &c.first };
             for span in prefix {
                 self.pen.write(&mut self.out, span, None);
             }
             c.used = true;
+        }
+        if self.out.len() > start {
+            self.prefixes.push((self.line_no, self.out.len() - start));
         }
     }
 
@@ -145,7 +171,11 @@ impl Renderer<'_> {
                 pen.write(&mut line, span, None);
             }
         }
-        self.out.push_str(line.trim_end_matches(' '));
+        let line = line.trim_end_matches(' ');
+        if !line.is_empty() {
+            self.prefixes.push((self.line_no, line.len()));
+        }
+        self.out.push_str(line);
         pen.finish_line(&mut self.out);
         self.out.push('\n');
         self.line_no += 1;

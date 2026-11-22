@@ -1,10 +1,14 @@
 //! martty — a tiny Markdown renderer tuned for Ghostty.
 //!
-//! Usage: `martty [-p|-P] [--width N] [FILE]` (reads stdin when FILE is absent
-//! or `-`). Output taller than the screen opens a `less`-like pager; `-p`
-//! forces it, `-P` disables it. `--width` lays text out for N columns instead
-//! of the terminal width. Set `MARTTY_TEXT_SIZING=0|1` / `MARTTY_IMAGES=0|1`
-//! to override capability detection; `NO_COLOR` turns off colors and images.
+//! Usage: `martty [-p|-P] [-w] [--width N] [FILE]` (reads stdin when FILE is
+//! absent or `-`). Output taller than the screen opens a `less`-like pager;
+//! `-p` forces it, `-P` disables it. `-w` opens the pager and follows changes
+//! to FILE. `--width` lays text out for N columns instead of the terminal
+//! width. `--remote` (or `MARTTY_REMOTE=1`) loads https images; it is off
+//! otherwise. Set `MARTTY_TEXT_SIZING=0|1` / `MARTTY_IMAGES=0|1`
+//! to override capability detection; `MARTTY_NO_COLOR=1` turns off colors and
+//! images. Every setting martty reads from the environment has the `MARTTY_`
+//! prefix.
 
 mod diacritics;
 mod heading;
@@ -24,12 +28,13 @@ use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use heading::HeadingFont;
-use pager::Layout;
+use pager::{Layout, Params};
 use render::{Config, Diagrams, Document, HeadingImages, Images, MathImages};
 use style::Color;
 use term::{Caps, Rgb, Size, luma, mix};
 
-const USAGE: &str = "usage: martty [-p|--pager] [-P|--no-pager] [--width N] [FILE]";
+const USAGE: &str =
+    "usage: martty [-p|--pager] [-P|--no-pager] [-w|--follow] [--remote] [--width N] [FILE]";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Paging {
@@ -40,6 +45,10 @@ enum Paging {
 
 struct Args {
     paging: Paging,
+    /// Reload FILE when it changes (`-w`).
+    follow: bool,
+    /// Load https images (`--remote`, `MARTTY_REMOTE=1`).
+    remote: bool,
     /// Layout width in cells; the terminal width when absent.
     width: Option<usize>,
     file: Option<PathBuf>,
@@ -58,7 +67,10 @@ fn main() -> ExitCode {
 
 fn run() -> io::Result<()> {
     let args = parse_args()?;
-    let (markdown, base_dir) = read_input(args.file.as_deref())?;
+    if args.remote {
+        remote::enable();
+    }
+    let (mut markdown, base_dir) = read_input(args.file.as_deref())?;
     let title = args
         .file
         .as_deref()
@@ -66,18 +78,23 @@ fn run() -> io::Result<()> {
         .map_or_else(|| "stdin".to_owned(), |n| n.to_string_lossy().into_owned());
 
     let mut caps = term::probe();
-    // https://no-color.org: any non-empty value. Images go too: placeholders
-    // carry the image id in their foreground color, and diagrams and image
-    // headings are colored anyway. Without a background, code blocks get a
-    // bar instead of a panel.
-    let color = std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty());
+    // Images go too: placeholders carry the image id in their foreground
+    // color, and diagrams and image headings are colored anyway. Without a
+    // background, code blocks get a bar instead of a panel.
+    let color = std::env::var_os("MARTTY_NO_COLOR").is_none_or(|v| v != "1");
     if !color {
         caps.graphics = false;
         caps.bg = None;
     }
     let pending_input = std::mem::take(&mut caps.pending_input);
     let mut next_id = image_id_seed();
-    let mut render = |layout: Layout<'_>, mut size: Size, zoom: f32| {
+    let file = args.file.as_deref().filter(|f| *f != Path::new("-"));
+    let mut render = |layout: Layout<'_>, params: Params| {
+        let Params {
+            mut size,
+            zoom,
+            overflow,
+        } = params;
         if let Some(width) = args.width {
             size.cols = width;
         }
@@ -88,6 +105,13 @@ fn run() -> io::Result<()> {
             Layout::Document => {
                 let mut config = config(&caps, size, &base_dir, first_id, zoom, false);
                 config.color = color;
+                config.overflow = overflow;
+                // Read again on every layout, so following picks up edits;
+                // a file that can't be read right now (mid-save) keeps the
+                // text read before.
+                if let Some(text) = file.and_then(|f| std::fs::read_to_string(f).ok()) {
+                    markdown = text;
+                }
                 render::render(&markdown, &config)
             }
             Layout::File(path) => {
@@ -99,6 +123,7 @@ fn run() -> io::Result<()> {
                 let dir = path.parent().unwrap_or(Path::new("."));
                 let mut config = config(&caps, size, dir, first_id, zoom, false);
                 config.color = color;
+                config.overflow = overflow;
                 render::render(&markdown, &config)
             }
             Layout::Diagram(source) => {
@@ -110,15 +135,26 @@ fn run() -> io::Result<()> {
     };
 
     let size = term::size();
-    let doc = render(Layout::Document, size, 1.0);
+    let params = Params {
+        size,
+        zoom: 1.0,
+        overflow: false,
+    };
+    let doc = render(Layout::Document, params);
     let page = io::stdout().is_terminal()
         && match args.paging {
+            _ if args.follow => true,
             Paging::Always => true,
             Paging::Never => false,
             Paging::Auto => doc.lines.len() >= size.rows,
         };
     if page {
-        return pager::run(&title, doc, &pending_input, render);
+        let options = pager::Options {
+            title: &title,
+            file,
+            follow: args.follow,
+        };
+        return pager::run(&options, doc, &pending_input, render);
     }
     print(&doc)
 }
@@ -132,6 +168,8 @@ fn print(doc: &Document) -> io::Result<()> {
 fn parse_args() -> io::Result<Args> {
     let mut args = Args {
         paging: Paging::Auto,
+        follow: false,
+        remote: std::env::var_os("MARTTY_REMOTE").is_some_and(|v| v == "1"),
         width: None,
         file: None,
     };
@@ -147,6 +185,8 @@ fn parse_args() -> io::Result<Args> {
             }
             Some("-p" | "--pager") => args.paging = Paging::Always,
             Some("-P" | "--no-pager") => args.paging = Paging::Never,
+            Some("-w" | "--follow") => args.follow = true,
+            Some("--remote") => args.remote = true,
             Some("-h" | "--help") => {
                 println!("{USAGE}");
                 std::process::exit(0);
@@ -256,6 +296,7 @@ fn config(
     Config {
         width: size.cols,
         color: true,
+        overflow: false,
         text_sizing: caps.text_sizing,
         code_bg: caps.bg.map(|bg| {
             let (r, g, b) = panel_rgb(bg, fg);

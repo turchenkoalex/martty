@@ -94,7 +94,7 @@ fn terminator(s: &str) -> Option<(usize, usize)> {
 /// Whether only escape sequences follow `range` on its line: the link runs
 /// to the line's end and may continue on the next one.
 fn ends_line(text: &str, range: &Range<usize>) -> bool {
-    crate::pager::view::plain_text(&text[range.end..])
+    super::view::plain_text(&text[range.end..])
         .trim()
         .is_empty()
 }
@@ -121,6 +121,23 @@ pub(super) fn highlight(text: &str, range: &Range<usize>) -> String {
     out.push_str(rest);
     out.push_str("\x1b[27m");
     out.push_str(&text[range.end..]);
+    out
+}
+
+/// `text` with every range in `ranges` reversed, as `highlight` does;
+/// a range overlapping one already marked is skipped.
+pub(super) fn highlight_all(text: &str, mut ranges: Vec<Range<usize>>) -> String {
+    ranges.sort_by_key(|r| std::cmp::Reverse(r.start));
+    let mut out = text.to_owned();
+    let mut limit = usize::MAX;
+    // From the last range back, so earlier byte offsets stay valid.
+    for range in ranges {
+        if range.end > limit || range.end > out.len() {
+            continue;
+        }
+        limit = range.start;
+        out = highlight(&out, &range);
+    }
     out
 }
 
@@ -158,10 +175,7 @@ mod tests {
     use super::*;
 
     fn line(text: &str) -> Line {
-        Line {
-            text: text.to_owned(),
-            image: None,
-        }
+        Line::new(text)
     }
 
     fn link(url: &str, text: &str) -> String {

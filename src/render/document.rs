@@ -1,5 +1,7 @@
 use std::borrow::Cow;
+use std::ops::Range;
 
+use super::slice::slice_cells;
 use crate::kitty;
 use crate::style::{Color, Style};
 
@@ -12,13 +14,28 @@ pub struct Document {
     /// Image id → mermaid source, so the pager can open a diagram alone.
     pub diagrams: Vec<(u32, String)>,
     pub headings: Vec<Heading>,
+    /// Text behind blocks whose lines don't hold it as plain text: code
+    /// (panel padding, wrapping) and everything drawn as an image.
+    pub sources: Vec<Source>,
 }
 
-/// Where a heading starts, for `#anchor` links.
+/// Where a heading starts, for `#anchor` links and the table of contents.
 pub struct Heading {
     pub line: usize,
+    /// 1 for H1 … 6 for H6.
+    pub level: u8,
+    pub text: String,
     /// GitHub-style anchor, without the `#`.
     pub anchor: String,
+}
+
+/// The original text of the block drawn on `lines`, for copying.
+pub struct Source {
+    pub lines: Range<usize>,
+    pub text: String,
+    /// Code blocks and diagrams, which `y` copies; otherwise an image's alt
+    /// text, a heading or a formula.
+    pub code: bool,
 }
 
 pub struct Line {
@@ -26,6 +43,12 @@ pub struct Line {
     pub text: String,
     /// Set when the line is a row of image placeholders.
     pub image: Option<ImageRow>,
+    /// Bytes of `text` taken by container prefixes (quote bars, bullets,
+    /// indents), which copying leaves out.
+    pub prefix_len: usize,
+    /// Set when the text after the prefix is wider than the screen (code
+    /// and tables laid out without wrapping).
+    pub wide: Option<Wide>,
 }
 
 /// Enough about a placeholder row to redraw it shifted sideways.
@@ -41,6 +64,13 @@ pub struct ImageRow {
     pub prefix_len: usize,
 }
 
+/// A text line that overflows the screen, in cells.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Wide {
+    pub cols: u32,
+    pub visible: u32,
+}
+
 impl ImageRow {
     /// How far this row can be panned.
     pub fn overflow(&self) -> u32 {
@@ -48,11 +78,40 @@ impl ImageRow {
     }
 }
 
+impl Wide {
+    pub fn overflow(self) -> u32 {
+        self.cols.saturating_sub(self.visible)
+    }
+}
+
 impl Line {
-    /// The line with images wider than the screen shifted left by `pan` cells.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            image: None,
+            prefix_len: 0,
+            wide: None,
+        }
+    }
+
+    /// The line with images and text wider than the screen shifted left by
+    /// `pan` cells.
     pub fn panned(&self, pan: u32) -> Cow<'_, str> {
+        self.pan_text(&self.text, pan)
+    }
+
+    /// Like `panned`, for `text`: this line's text with extra escape
+    /// sequences (highlights) inserted after the prefix.
+    pub fn pan_text<'t>(&self, text: &'t str, pan: u32) -> Cow<'t, str> {
+        if let Some(wide) = self.wide.filter(|w| w.overflow() > 0 && pan > 0) {
+            let at = self.prefix_len.min(text.len());
+            let shift = pan.min(wide.overflow()) as usize;
+            let mut out = text[..at].to_owned();
+            out.push_str(&slice_cells(&text[at..], shift, wide.visible as usize));
+            return Cow::Owned(out);
+        }
         let Some(img) = self.image.filter(|i| i.overflow() > 0 && pan > 0) else {
-            return Cow::Borrowed(&self.text);
+            return Cow::Borrowed(text);
         };
         let mut out = self.text[..img.prefix_len].to_owned();
         let (r, g, b) = kitty::id_color(img.id);
@@ -64,6 +123,11 @@ impl Line {
         ));
         out.push_str("\x1b[0m");
         Cow::Owned(out)
+    }
+
+    fn overflow(&self) -> u32 {
+        let image = self.image.map_or(0, |i| i.overflow());
+        image.max(self.wide.map_or(0, Wide::overflow))
     }
 }
 
@@ -80,10 +144,6 @@ impl Document {
 
     /// Widest horizontal pan any line allows.
     pub fn max_pan(&self) -> u32 {
-        self.lines
-            .iter()
-            .filter_map(|l| l.image.map(|i| i.overflow()))
-            .max()
-            .unwrap_or(0)
+        self.lines.iter().map(Line::overflow).max().unwrap_or(0)
     }
 }

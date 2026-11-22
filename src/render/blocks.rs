@@ -8,7 +8,7 @@ use super::highlight::highlight;
 use super::layout::Container;
 use super::span::{Span, spans_width};
 use super::wrap::{hard_wrap_spans, wrap};
-use super::{Heading, Renderer};
+use super::{Heading, Renderer, Source};
 use crate::style::{Color, Style, Underline};
 
 pub(super) struct CodeBlock {
@@ -35,8 +35,11 @@ impl Renderer<'_> {
         let mut spans = mem::take(&mut self.inline);
         let text: String = spans.iter().map(|s| s.text.as_str()).collect();
         let anchor = self.anchors.next(&text);
+        let line = self.line_no;
         self.headings.push(Heading {
-            line: self.line_no,
+            line,
+            level: level as u8,
+            text: text.trim().to_owned(),
             anchor,
         });
         let (color, underline) = match level {
@@ -70,6 +73,7 @@ impl Renderer<'_> {
         }
 
         if self.image_heading(level, &spans) {
+            self.add_source(line, text.trim(), false);
             return;
         }
         for span in &mut spans {
@@ -81,32 +85,55 @@ impl Renderer<'_> {
     }
 
     pub(super) fn render_code(&mut self, code: &CodeBlock) {
+        let start = self.line_no;
+        let text = code.text.strip_suffix('\n').unwrap_or(&code.text);
+        self.code_lines(code, text);
+        self.add_source(start, text, true);
+    }
+
+    /// The text behind the lines from `start` up to here, for copying.
+    pub(super) fn add_source(&mut self, start: usize, text: &str, code: bool) {
+        if self.line_no > start {
+            self.sources.push(Source {
+                lines: start..self.line_no,
+                text: text.to_owned(),
+                code,
+            });
+        }
+    }
+
+    fn code_lines(&mut self, code: &CodeBlock, text: &str) {
         if code.lang == "mermaid" && self.diagram(&code.text) {
             return;
         }
         if code.lang == "math" && self.math_block(&code.text) {
             return;
         }
-        let avail = self.avail();
-        let text = code.text.strip_suffix('\n').unwrap_or(&code.text);
         let lines = highlight(&code.lang, text).unwrap_or_else(|| {
             text.lines()
                 .map(|l| vec![Span::new(l.replace('\t', "    "), Style::default())])
                 .collect()
         });
-        let chunks: Vec<Vec<Span>> = lines
-            .iter()
-            .flat_map(|line| hard_wrap_spans(line, avail.saturating_sub(2)))
-            .collect();
+        let chunks: Vec<Vec<Span>> = if self.cfg.overflow {
+            lines
+        } else {
+            let avail = self.avail();
+            lines
+                .iter()
+                .flat_map(|line| hard_wrap_spans(line, avail.saturating_sub(2)))
+                .collect()
+        };
+        // Unwrapped, the panel is as wide as its longest line.
+        let longest = chunks.iter().map(|c| spans_width(c) + 2).max().unwrap_or(0);
+        let avail = self.avail().max(longest);
+        // Without a panel there is no free row for the language label, and
+        // it isn't worth a line of its own.
         let Some(bg) = self.cfg.code_bg else {
             let bar = Span::new("│ ", Style::fg(Color::Ansi(8)));
-            if !code.lang.is_empty() {
-                self.emit_line(&[bar.clone(), Span::new(code.lang.as_str(), Style::dim())]);
-            }
             for chunk in chunks {
                 let mut line = vec![bar.clone()];
                 line.extend(chunk);
-                self.emit_line(&line);
+                self.emit_wide_line(&line);
             }
             return;
         };
@@ -115,29 +142,27 @@ impl Renderer<'_> {
             bg: Some(bg),
             ..Style::default()
         };
-        let padded = |text: String, style: Style| {
-            let pad = avail.saturating_sub(text.width() + 1);
-            vec![
-                Span::new(" ", base.clone()),
-                Span::new(text, style),
-                Span::new(" ".repeat(pad), base.clone()),
-            ]
-        };
+        // The panel's top padding row carries the language, right-aligned.
         let label = Style {
             dim: true,
             italic: true,
             ..base.clone()
         };
-        self.emit_line(&padded(code.lang.clone(), label));
+        let pad = avail.saturating_sub(code.lang.width() + 1);
+        self.emit_wide_line(&[
+            Span::new(" ".repeat(pad), base.clone()),
+            Span::new(code.lang.as_str(), label),
+            Span::new(" ", base.clone()),
+        ]);
         for mut chunk in chunks {
             let pad = avail.saturating_sub(spans_width(&chunk) + 1);
             chunk.iter_mut().for_each(|s| s.style.bg = Some(bg));
             let mut line = vec![Span::new(" ", base.clone())];
             line.extend(chunk);
             line.push(Span::new(" ".repeat(pad), base.clone()));
-            self.emit_line(&line);
+            self.emit_wide_line(&line);
         }
-        self.emit_line(&padded(String::new(), base.clone()));
+        self.emit_wide_line(&[Span::new(" ".repeat(avail), base.clone())]);
     }
 
     /// Front matter as aligned `key  value` lines, dimmed. `sep` is `:` for

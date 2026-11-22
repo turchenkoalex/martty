@@ -128,14 +128,7 @@ fn read_until_da1(tty: &mut File) -> io::Result<Vec<u8>> {
         if left.is_zero() {
             break;
         }
-        let mut pfd = libc::pollfd {
-            fd: tty.as_raw_fd(),
-            events: libc::POLLIN,
-            revents: 0,
-        };
-        let ms = i32::try_from(left.as_millis()).unwrap_or(i32::MAX);
-        // SAFETY: a single valid pollfd.
-        if unsafe { libc::poll(&mut pfd, 1, ms) } <= 0 {
+        if !wait_readable(tty.as_raw_fd(), left) {
             break;
         }
         let n = tty.read(&mut chunk)?;
@@ -145,6 +138,38 @@ fn read_until_da1(tty: &mut File) -> io::Result<Vec<u8>> {
         buf.extend_from_slice(&chunk[..n]);
     }
     Ok(buf)
+}
+
+/// Waits up to `timeout` for `fd` to have input. `select`, not `poll`: on
+/// macOS `poll` doesn't support character devices such as `/dev/tty`; it
+/// returns at once with `POLLNVAL` and the following `read` blocks until a
+/// key arrives. Interrupted by a signal (`SIGWINCH`), it reports no input.
+pub fn wait_readable(fd: RawFd, timeout: Duration) -> bool {
+    // FD_SETSIZE on macOS and Linux; libc types it differently per platform.
+    const FD_SET_CAPACITY: usize = 1024;
+    if !usize::try_from(fd).is_ok_and(|slot| slot < FD_SET_CAPACITY) {
+        return false;
+    }
+    // Field types differ per platform; our timeouts are well under a second.
+    let mut tv = libc::timeval {
+        tv_sec: timeout.as_secs().min(60) as libc::time_t,
+        tv_usec: timeout.subsec_micros() as libc::suseconds_t,
+    };
+    // SAFETY: an all-zero fd_set is the empty set (what FD_ZERO produces).
+    let mut set: libc::fd_set = unsafe { std::mem::zeroed() };
+    // SAFETY: `fd` is below FD_SETSIZE, checked above.
+    unsafe { libc::FD_SET(fd, &mut set) };
+    // SAFETY: one fd_set and a timeval, both owned by this frame.
+    let ready = unsafe {
+        libc::select(
+            fd + 1,
+            &mut set,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut tv,
+        )
+    };
+    ready > 0
 }
 
 fn has_da1(buf: &[u8]) -> bool {

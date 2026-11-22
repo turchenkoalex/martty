@@ -14,6 +14,7 @@ mod images;
 mod inline;
 mod layout;
 mod links;
+mod slice;
 mod span;
 mod table;
 #[cfg(test)]
@@ -35,7 +36,7 @@ use crate::style::{Color, Style};
 use crate::term::Rgb;
 
 use blocks::CodeBlock;
-pub use document::{Document, Heading, ImageRow, Line};
+pub use document::{Document, Heading, ImageRow, Line, Source, Wide};
 use html::OpenTag;
 use images::PendingImage;
 use inline::link_style;
@@ -55,10 +56,13 @@ struct OrderedList {
 
 pub struct Config {
     pub width: usize,
-    /// `false` under `NO_COLOR`: text keeps bold, italic and the like, but no colors.
+    /// `false` under `MARTTY_NO_COLOR`: text keeps bold, italic and the like, but no colors.
     pub color: bool,
     /// Kitty text sizing protocol (OSC 66) for big headings.
     pub text_sizing: bool,
+    /// Code blocks and tables keep their natural width instead of wrapping
+    /// to `width`; the pager pans the lines that overflow.
+    pub overflow: bool,
     /// Background for code; `None` falls back to a left bar.
     pub code_bg: Option<Color>,
     /// Inline images via kitty graphics; `None` shows alt text instead.
@@ -192,6 +196,10 @@ struct Renderer<'c> {
     /// Lines written to `out` so far.
     line_no: usize,
     image_rows: Vec<(usize, ImageRow)>,
+    /// Line number → bytes taken by its container prefix.
+    prefixes: Vec<(usize, usize)>,
+    wide_rows: Vec<(usize, Wide)>,
+    sources: Vec<Source>,
     diagrams: Vec<(u32, String)>,
     headings: Vec<Heading>,
     anchors: links::Anchors,
@@ -222,6 +230,9 @@ impl<'c> Renderer<'c> {
             image_ids: Vec::new(),
             line_no: 0,
             image_rows: Vec::new(),
+            prefixes: Vec::new(),
+            wide_rows: Vec::new(),
+            sources: Vec::new(),
             diagrams: Vec::new(),
             headings: Vec::new(),
             anchors: links::Anchors::default(),
@@ -248,16 +259,21 @@ impl<'c> Renderer<'c> {
         let mut lines: Vec<Line> = if body.is_empty() {
             Vec::new()
         } else {
-            body.split('\n')
-                .map(|text| Line {
-                    text: text.to_owned(),
-                    image: None,
-                })
-                .collect()
+            body.split('\n').map(Line::new).collect()
         };
         for (n, row) in self.image_rows {
             if let Some(line) = lines.get_mut(n) {
                 line.image = Some(row);
+            }
+        }
+        for (n, len) in self.prefixes {
+            if let Some(line) = lines.get_mut(n) {
+                line.prefix_len = len.min(line.text.len());
+            }
+        }
+        for (n, wide) in self.wide_rows {
+            if let Some(line) = lines.get_mut(n) {
+                line.wide = Some(wide);
             }
         }
         Document {
@@ -266,6 +282,7 @@ impl<'c> Renderer<'c> {
             image_ids: self.image_ids,
             diagrams: self.diagrams,
             headings: self.headings,
+            sources: self.sources,
         }
     }
 
