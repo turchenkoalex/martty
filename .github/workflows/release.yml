@@ -1,7 +1,7 @@
 name: Release
 
-# A `v*` tag builds the macOS binaries and publishes them as a GitHub
-# release. Run it by hand to build the archives without publishing, as a
+# A `v*` tag builds the macOS and Linux binaries and publishes them as a
+# GitHub release. Run it by hand to build the archives without publishing, as a
 # dry run before tagging.
 #
 # Asset names carry no version, so
@@ -24,10 +24,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [aarch64-apple-darwin, x86_64-apple-darwin]
-    # An arm64 runner; x86_64 is cross-compiled (Apple clang builds the
-    # Oniguruma C code for either arch).
-    runs-on: macos-latest
+        include:
+          # Apple silicon only: Intel Macs are no longer sold.
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          # Static musl binaries run on any distribution, whatever its glibc.
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -43,21 +46,31 @@ jobs:
             exit 1
           fi
 
+      # Oniguruma and ring (rustls) are C, compiled against musl.
+      - name: Install musl
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          target=${{ matrix.target }}
+          echo "CC_${target//-/_}=musl-gcc" >> "$GITHUB_ENV"
+
       - run: cargo build --release --locked --target ${{ matrix.target }}
 
-      # arm64 macOS kills unsigned binaries. The linker signs arm64 ad hoc
-      # but leaves x86_64 unsigned, so sign both here (`--force` replaces the
-      # linker's signature) and check it, so a toolchain change can't ship a
-      # binary that won't start. Ad hoc isn't a Developer ID: a file
-      # downloaded with a browser still needs its quarantine flag removed.
+      # arm64 macOS kills unsigned binaries. The linker signs ad hoc; sign
+      # again anyway (`--force` replaces its signature) and check, so a
+      # toolchain change can't ship a binary that won't start. Ad hoc isn't a
+      # Developer ID: a file downloaded with a browser still needs its
+      # quarantine flag removed.
       - name: Sign ad hoc
+        if: runner.os == 'macOS'
         run: |
           bin=target/${{ matrix.target }}/release/martty
           codesign --force --sign - "$bin"
           codesign --verify --verbose "$bin"
 
+      # Every binary is built on the system it runs on.
       - name: Smoke test
-        if: matrix.target == 'aarch64-apple-darwin'
         run: |
           bin=target/${{ matrix.target }}/release/martty
           "$bin" --help
