@@ -70,7 +70,7 @@ impl Pager<'_> {
         }
         let fullscreen = self.view().is_diagram();
         match key {
-            Key::Char('q' | 'Q' | 'z' | ' ') | Key::Esc if fullscreen => Action::Close,
+            Key::Char('q' | 'Q' | 'v' | ' ') | Key::Esc if fullscreen => Action::Close,
             Key::Left | Key::Right if fullscreen => Action::Switch(key == Key::Right),
             Key::Esc if self.view().selected.is_some() => {
                 self.view_mut().selected = None;
@@ -89,7 +89,7 @@ impl Pager<'_> {
                 let zoom = self.view().zoom;
                 self.zoom_by(1.0 / zoom)
             }
-            Key::Char('z') if !fullscreen => match self.visible_diagram() {
+            Key::Char('v') if !fullscreen => match self.visible_diagram() {
                 Some(index) => Action::Open(index),
                 None => {
                     self.message = Some("No diagram on screen".into());
@@ -173,7 +173,8 @@ impl Pager<'_> {
             Key::Char('l') | Key::Right => self.pan_by(step),
             Key::Char('j' | 'e') | Key::Down | Key::Enter | Key::Ctrl(14) => self.scroll(1, rows),
             Key::Char('k') | Key::Up | Key::Ctrl(16) => self.scroll(-1, rows),
-            Key::Char(' ' | 'f') | Key::PageDown | Key::Ctrl(6) => self.scroll(page, rows),
+            // `z` pages down as in less.
+            Key::Char(' ' | 'f' | 'z') | Key::PageDown | Key::Ctrl(6) => self.scroll(page, rows),
             Key::Char('b') | Key::PageUp | Key::Ctrl(2) => self.scroll(-page, rows),
             Key::Char('d') | Key::Ctrl(4) => self.scroll(page / 2, rows),
             Key::Char('u') | Key::Ctrl(21) => self.scroll(-page / 2, rows),
@@ -181,7 +182,7 @@ impl Pager<'_> {
             Key::Char('G' | '>') | Key::End => self.jump(usize::MAX),
             Key::Char('[') => self.heading_step(false),
             Key::Char(']') => self.heading_step(true),
-            Key::Char('o' | 't') => self.open_toc(),
+            Key::Char('t') => self.open_toc(),
             Key::Char('?') => self.overlay = Some(Overlay::Help),
             Key::Char(c @ ('m' | '\'')) => self.pending = Some(*c),
             Key::Char('/') => self.prompt = Some(String::new()),

@@ -1,5 +1,5 @@
 //! Screens drawn over the document: key help (`?`) and the table of
-//! contents (`o`/`t`).
+//! contents (`t`).
 
 use unicode_width::UnicodeWidthStr;
 

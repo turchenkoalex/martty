@@ -175,12 +175,12 @@ The pager follows `less` conventions. `?` shows the keys in the pager.
 |---|---|
 | `j` `e` `↓` `Enter` `Ctrl-N` | Scroll down one line (`Enter` opens the selected link) |
 | `k` `↑` `Ctrl-P` | Scroll up one line |
-| `Space` `f` `PgDn` `Ctrl-F` | Page down |
+| `Space` `f` `z` `PgDn` `Ctrl-F` | Page down |
 | `b` `PgUp` `Ctrl-B` | Page up |
 | `d` `Ctrl-D` / `u` `Ctrl-U` | Half page down / up |
 | `g` `<` `Home` / `G` `>` `End` | Go to the top / bottom |
 | `[` / `]` | Previous / next heading |
-| `o` `t` | Table of contents: `j`/`k` to move, `Enter` to go, `Esc` to close |
+| `t` | Table of contents: `j`/`k` to move, `Enter` to go, `Esc` to close |
 | `/` | Search (smart case: case-sensitive only if the query has uppercase letters). Matches are highlighted and the status line counts them, as in `3/17` |
 | `n` / `N` | Next / previous match |
 | `Esc` | Drop the link selection, then the search highlight |
@@ -190,8 +190,8 @@ The pager follows `less` conventions. `?` shows the keys in the pager.
 | `Tab` / `Shift-Tab` | Select the next / previous link, scrolling to it |
 | `Enter` | Open the selected link: `#heading` jumps to it, a relative `.md` file opens in the pager, anything else opens with `open` (`xdg-open` on Linux) |
 | `Backspace` `H` | Go back from an opened file or a full-screen diagram |
-| `z` | Open the diagram on screen full screen |
-| `z` `Space` `Esc` `q` | Close the full-screen diagram |
+| `v` | Open the diagram on screen full screen |
+| `v` `Space` `Esc` `q` | Close the full-screen diagram |
 | `←` / `→` | In a full-screen diagram: open the previous / next diagram of the document; going back lands on the one shown last |
 | `y` | Copy the code block on screen (or a diagram's Mermaid source) to the clipboard |
 | `c` / `C` | Copy the screen / the whole document as plain text |

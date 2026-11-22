@@ -6,7 +6,7 @@
 //! Images are uploaded only as they come within a screen of the view.
 //!
 //! Views form a stack: the document, and on top of it optionally a single
-//! diagram opened full screen (`z`). `+`/`-` re-render
+//! diagram opened full screen (`v`). `+`/`-` re-render
 //! images and diagrams at another zoom; ones wider than the screen are panned with
 //! `h`/`l` by redrawing their placeholder rows from a later image column —
 //! the image itself is not re-sent.

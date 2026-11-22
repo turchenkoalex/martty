@@ -136,7 +136,7 @@ impl Pager<'_> {
                 .map(|i| format!(" {}/{count}", i + 1))
                 .unwrap_or_default();
             return format!(
-                " {} › diagram{number}{extra}  · z/Space/Esc back · ←/→ other diagrams · +/- zoom · hjkl move",
+                " {} › diagram{number}{extra}  · v/Space/Esc back · ←/→ other diagrams · +/- zoom · hjkl move",
                 self.title
             );
         }
@@ -155,7 +155,7 @@ impl Pager<'_> {
         } else {
             ""
         };
-        format!(" {title}{extra}  · q quit{back} · / search · o contents · ? help")
+        format!(" {title}{extra}  · q quit{back} · / search · t contents · ? help")
     }
 }
 

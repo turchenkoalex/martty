@@ -82,9 +82,16 @@ fn zoom_in_should_request_relayout() {
 }
 
 #[test]
-fn z_should_open_visible_diagram() {
+fn v_should_open_visible_diagram() {
     let mut p = pager_with(diagram_doc(), 11);
-    assert_eq!(p.handle(Key::Char('z')), Action::Open(0));
+    assert_eq!(p.handle(Key::Char('v')), Action::Open(0));
+}
+
+#[test]
+fn z_should_page_down_as_in_less() {
+    let mut p = pager_with(text_doc(&["x"; 100]), 11);
+    p.handle(Key::Char('z'));
+    assert_eq!(p.view().top, 10);
 }
 
 #[test]
@@ -292,11 +299,20 @@ fn toc_should_open_at_current_section_and_jump() {
     let mut doc = text_doc(&["x"; 100]);
     doc.headings = vec![heading(10, "a"), heading(40, "b"), heading(70, "c")];
     let mut p = pager_with(doc, 11);
-    press(&mut p, b"]]o");
+    press(&mut p, b"]]t");
     assert!(matches!(p.overlay, Some(Overlay::Toc { selected: 1, .. })));
     press(&mut p, b"j\r");
     assert!(p.overlay.is_none());
     assert_eq!(p.view().top, 70);
+}
+
+#[test]
+fn o_should_not_open_toc() {
+    let mut doc = text_doc(&["x"; 100]);
+    doc.headings = vec![heading(10, "a")];
+    let mut p = pager_with(doc, 11);
+    press(&mut p, b"o");
+    assert!(p.overlay.is_none());
 }
 
 #[test]
@@ -394,18 +410,18 @@ fn diagrams_doc() -> Document {
 }
 
 #[test]
-fn fullscreen_diagram_should_close_on_z_and_space() {
+fn fullscreen_diagram_should_close_on_v_and_space() {
     let mut p = pager_with(diagrams_doc(), 11);
-    p.apply(Key::Char('z'), &mut no_render).ok();
+    p.apply(Key::Char('v'), &mut no_render).ok();
     assert!(p.view().is_diagram());
-    assert_eq!(p.handle(Key::Char('z')), Action::Close);
+    assert_eq!(p.handle(Key::Char('v')), Action::Close);
     assert_eq!(p.handle(Key::Char(' ')), Action::Close);
 }
 
 #[test]
 fn arrows_should_switch_diagrams_and_scroll_document_to_them() {
     let mut p = pager_with(diagrams_doc(), 11);
-    p.apply(Key::Char('z'), &mut no_render).ok();
+    p.apply(Key::Char('v'), &mut no_render).ok();
     p.apply(Key::Right, &mut no_render).ok();
     p.apply(Key::Right, &mut no_render).ok();
     assert_eq!(p.views.len(), 2);
