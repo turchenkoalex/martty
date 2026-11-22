@@ -191,3 +191,8 @@ alerts, more image formats, link navigation, table of contents, watch mode and m
 - [fontdue](https://github.com/mooman219/fontdue) for glyph rasterization
 - [JetBrains Mono](https://www.jetbrains.com/lp/mono/), bundled under the
   [SIL Open Font License](assets/fonts/OFL.txt)
+
+## License
+
+martty is licensed under the [Apache License 2.0](LICENSE). The bundled JetBrains Mono font
+is licensed separately under the [SIL Open Font License 1.1](assets/fonts/OFL.txt).
