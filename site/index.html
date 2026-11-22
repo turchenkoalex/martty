@@ -208,6 +208,8 @@ h1 em { font-style: normal; color: var(--accent); }
 section { padding: 96px 0 0; }
 .kicker { font: 600 13px/1 "JetBrains Mono", monospace; color: var(--accent); text-transform: uppercase; letter-spacing: .12em; }
 h2 { font: 800 clamp(28px, 4vw, 44px)/1.1 "JetBrains Mono", monospace; letter-spacing: -.035em; margin: 14px 0 14px; max-width: 22ch; }
+/* On wide screens each h2 breaks only between its phrases; on phones the width decides. */
+@media (min-width: 720px) { h2 { max-width: none; } h2 > span { display: inline-block; } }
 .sub { color: var(--muted); max-width: 620px; margin: 0 0 40px; font-size: 17px; }
 
 .features { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
@@ -234,20 +236,13 @@ kbd {
   border: 1px solid var(--line); border-bottom-width: 3px; color: var(--fg);
 }
 
-.install { display: grid; gap: 24px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+.install { display: grid; gap: 24px; }
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 26px; min-width: 0; }
 .panel h3 { font: 600 17px/1.3 Inter, sans-serif; margin: 0 0 14px; }
 .panel pre { margin: 0; background: var(--bg-2); border-radius: 10px; padding: 16px 18px; overflow-x: auto; font-size: 14px; line-height: 1.7; }
 .panel pre .c { color: var(--muted); font-style: normal; }
 .panel pre .p { color: var(--accent); user-select: none; }
 .panel p { color: var(--muted); font-size: 15px; margin: 14px 0 0; }
-.flags { width: 100%; border-collapse: collapse; font-size: 14px; }
-.flags td { padding: 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
-.flags tr:last-child td { border-bottom: 0; }
-.flags td:first-child { white-space: nowrap; padding-right: 16px; }
-.flags td:first-child code { color: var(--accent); }
-.flags td:last-child { color: var(--muted); }
-.flags .on { font-size: 11px; color: var(--t-green); border: 1px solid currentColor; border-radius: 4px; padding: 1px 5px; margin-left: 6px; font-family: "JetBrains Mono", monospace; }
 
 footer { margin-top: 110px; border-top: 1px solid var(--line); padding: 32px 0 48px; color: var(--muted); font-size: 14px; }
 footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
@@ -386,7 +381,7 @@ Euler: <span class="m">$</span>e^{i\pi} + 1 = 0<span class="m">$</span>
 
   <section id="features">
     <div class="kicker">Features</div>
-    <h2>Everything Ghostty can draw, put to use.</h2>
+    <h2><span>Everything Ghostty can draw,</span> <span>put to use.</span></h2>
     <p class="sub">Most terminal Markdown viewers stick to plain text. martty targets one terminal and uses all of it: kitty graphics with Unicode placeholders, OSC 8 hyperlinks, synchronized output and theme color queries.</p>
     <div class="features">
       <div class="feature">
@@ -439,7 +434,7 @@ Euler: <span class="m">$</span>e^{i\pi} + 1 = 0<span class="m">$</span>
 
   <section id="how">
     <div class="kicker">How it works</div>
-    <h2>Pixels go once. Then it's all text.</h2>
+    <h2><span>Pixels go once.</span> <span>Then it's all text.</span></h2>
     <p class="sub">Every image, diagram, formula and heading is transmitted to Ghostty a single time, then placed with Unicode placeholder characters. Each rendered line stays plain text.</p>
     <div class="pipeline">
       <svg viewBox="0 0 960 300" role="img" aria-label="Rendering pipeline: Markdown is parsed by pulldown-cmark, then each block becomes ANSI text, or an image via merman, latex-rust, fontdue and resvg, placed with kitty Unicode placeholders, all shown in Ghostty">
@@ -494,7 +489,7 @@ Euler: <span class="m">$</span>e^{i\pi} + 1 = 0<span class="m">$</span>
 
   <section id="pager">
     <div class="kicker">Pager</div>
-    <h2>Feels like <code>less</code>. Knows it's Markdown.</h2>
+    <h2><span>Feels like <code>less</code>.</span> <span>Knows it's Markdown.</span></h2>
     <p class="sub">Long documents open in a full-screen pager. The mouse stays with Ghostty, so you can select text and Cmd-click links as usual.</p>
     <div class="keys">
       <div class="key"><span>Scroll</span><div><kbd>j</kbd><kbd>k</kbd><kbd>↑</kbd><kbd>↓</kbd></div></div>
@@ -512,11 +507,18 @@ Euler: <span class="m">$</span>e^{i\pi} + 1 = 0<span class="m">$</span>
 
   <section id="install">
     <div class="kicker">Install</div>
-    <h2>Build it from source.</h2>
-    <p class="sub">martty isn't on crates.io yet. You need a recent stable Rust toolchain with edition 2024 support.</p>
+    <h2><span>Download it,</span> <span>or build it from source.</span></h2>
+    <p class="sub">Prebuilt binaries are for macOS on Apple silicon and Intel. Anywhere else, build with a recent stable Rust toolchain.</p>
     <div class="install">
       <div class="panel">
-        <h3>Install and run</h3>
+        <h3>Download for macOS</h3>
+<pre><span class="p">$ </span>mkdir -p ~/.local/bin
+<span class="p">$ </span>curl -fsSL https://github.com/turchenkoalex/martty/releases/latest/download/martty-aarch64-apple-darwin.tar.gz \
+    | tar -xz -C ~/.local/bin --strip-components 1 martty-aarch64-apple-darwin/martty</pre>
+        <p>On an Intel Mac use <code>x86_64-apple-darwin</code>. A file saved from the browser is quarantined; clear it with <code>xattr -d com.apple.quarantine martty</code>. Checksums and all files are on the <a href="https://github.com/turchenkoalex/martty/releases/latest">release page</a>.</p>
+      </div>
+      <div class="panel">
+        <h3>Build and run</h3>
 <pre><span class="p">$ </span>cargo install --git https://github.com/turchenkoalex/martty
 
 <span class="p">$ </span>martty README.md          <span class="c"># view a file</span>
@@ -524,16 +526,6 @@ Euler: <span class="m">$</span>e^{i\pi} + 1 = 0<span class="m">$</span>
 <span class="p">$ </span>martty -p short.md        <span class="c"># always open the pager</span>
 <span class="p">$ </span>martty --width 72 doc.md  <span class="c"># lay out for 72 columns</span></pre>
         <p>Short output prints straight to stdout; anything taller than the screen opens the pager.</p>
-      </div>
-      <div class="panel">
-        <h3>Cargo features</h3>
-        <table class="flags">
-          <tr><td><code>mermaid</code><span class="on">default</span></td><td>Diagrams via merman, about 10 MB</td></tr>
-          <tr><td><code>math</code><span class="on">default</span></td><td>LaTeX via latex-rust and STIX Two Math, about 2.5 MB</td></tr>
-          <tr><td><code>highlight</code><span class="on">default</span></td><td>Syntax highlighting via syntect, about 1 MB</td></tr>
-          <tr><td><code>remote</code></td><td>Images from http(s) URLs, cached on disk for a day</td></tr>
-        </table>
-        <p>Trim the binary with <code>--no-default-features</code> and add back what you need with <code>--features</code>.</p>
       </div>
     </div>
   </section>
