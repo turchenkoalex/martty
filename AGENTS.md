@@ -83,9 +83,15 @@ off and enable only what is used; put heavy optional functionality behind a carg
 
 ## Keeping files small
 
-Split a module before it grows past ~500 lines, along the existing boundaries: turn it
-into a directory module, as `render/` is. When changing an oversized file, first move out
-the part being changed. Keep functions under 100 lines (clippy `too_many_lines`).
+- **Files** — `tests/source_file_size.rs` caps each `src/` file at 500 code lines (blank
+  lines, `//` comments, the trailing `#[cfg(test)]` module and `tests.rs` files don't
+  count). Larger files are listed in `OVERSIZED_FILES` with their size; the test fails if
+  they grow, and also if they shrink without the entry being lowered.
+- **Functions** — clippy `too_many_lines` (over 100 lines) is enabled in `Cargo.toml`.
+
+When a module grows, turn it into a directory module and split it by concern, as
+`render/` is. When changing an oversized file, first move out the part being changed, then
+lower its cap. Raising a cap is a deliberate exception; say why in the commit message.
 
 ## Testing
 
