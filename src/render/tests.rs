@@ -46,6 +46,7 @@ fn plain_config() -> Config {
         images: None,
         headings: None,
         diagrams: None,
+        math: None,
         first_image_id: 1,
     }
 }
@@ -83,6 +84,7 @@ fn render_should_keep_padded_inline_code_attached_to_punctuation() {
         images: None,
         headings: None,
         diagrams: None,
+        math: None,
         first_image_id: 1,
     };
     let out = strip_ansi(&render("a `b c`, d", &cfg));
@@ -102,6 +104,7 @@ fn images_config() -> Config {
         }),
         headings: None,
         diagrams: None,
+        math: None,
         first_image_id: 1,
     }
 }
@@ -322,6 +325,47 @@ fn render_should_only_start_definitions_at_colon_and_space() {
         render_plain("T\n: ok\n:not\n\nU\n: two"),
         "T\n  ok :not\nU\n  two\n"
     );
+}
+
+#[cfg(feature = "math")]
+fn math_config() -> Config {
+    Config {
+        math: Some(MathImages {
+            cell: (10, 24),
+            color: (255, 255, 255),
+        }),
+        ..plain_config()
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn render_should_place_inline_formula_within_its_line() {
+    let doc = super::render("a $x^2$ b", &math_config());
+    assert_eq!(doc.image_ids.len(), 1);
+    assert_eq!(doc.lines.len(), 1);
+    let line = strip_ansi(&doc.lines[0].text);
+    assert!(line.starts_with("a \u{10EEEE}"), "{line:?}");
+    assert!(line.ends_with(" b"), "{line:?}");
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn render_should_put_display_formula_on_its_own_rows() {
+    let doc = super::render("before\n$$\\frac{a}{b}$$\nafter", &math_config());
+    let plain: Vec<String> = doc.lines.iter().map(|l| strip_ansi(&l.text)).collect();
+    assert_eq!(plain.first().map(String::as_str), Some("before"));
+    assert_eq!(plain.last().map(String::as_str), Some("after"));
+    let rows = doc.lines.iter().filter(|l| l.image.is_some()).count();
+    assert!(rows >= 2, "{plain:?}");
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn render_should_show_unknown_formula_as_code() {
+    let doc = super::render("$\\notacommand$", &math_config());
+    assert!(doc.image_ids.is_empty());
+    assert_eq!(strip_ansi(&doc.to_ansi()), "\\notacommand\n");
 }
 
 /// Every `tests/fixtures/*.md` rendered as plain text and compared with its

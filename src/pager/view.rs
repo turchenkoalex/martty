@@ -1,3 +1,6 @@
+use unicode_width::UnicodeWidthChar;
+
+use crate::kitty;
 use crate::render::Document;
 
 /// One screenful of content with its own scroll, pan and zoom.
@@ -42,15 +45,16 @@ impl View {
     }
 }
 
-/// Visible text of a rendered line: escape sequences removed, image
-/// placeholder lines reduced to nothing.
+/// Visible text of a rendered line: escape sequences and image placeholder
+/// cells (with their row/column diacritics) removed.
 pub(super) fn plain_text(line: &str) -> String {
-    if line.contains('\u{10EEEE}') {
-        return String::new();
-    }
     let mut out = String::new();
     let mut chars = line.chars().peekable();
     while let Some(c) = chars.next() {
+        if c == kitty::PLACEHOLDER {
+            while chars.next_if(|d| d.width() == Some(0)).is_some() {}
+            continue;
+        }
         if c != '\x1b' {
             out.push(c);
             continue;
@@ -84,5 +88,11 @@ mod tests {
     fn plain_text_should_strip_sgr_and_hyperlinks() {
         let line = "\x1b[0;1mbold\x1b[0m \x1b]8;;https://x\x1b\\link\x1b]8;;\x1b\\";
         assert_eq!(plain_text(line), "bold link");
+    }
+
+    #[test]
+    fn plain_text_should_keep_text_around_placeholders() {
+        let line = format!("a {} b", kitty::placeholder_row(0, 0, 3));
+        assert_eq!(plain_text(&line), "a  b");
     }
 }

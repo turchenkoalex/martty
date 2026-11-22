@@ -37,11 +37,18 @@ A long URL: https://example.com/a/very/long/path/that/does/not/fit/on/one/line/a
 
 Wide characters: 日本語のテキスト, 한국어, emoji 👩‍💻 ❤️ in running text.
 
-Math, inline: $E = mc^2$ and $\sum_{i=1}^{n} i = \frac{n(n+1)}{2}$.
+Math, inline: $E = mc^2$, $\alpha_i + \beta^2$ and $\sum_{i=1}^{n} i = \frac{n(n+1)}{2}$, which wrap
+with the text around them. Prices are not math: $5 and $10.
 
 $$
 \int_0^1 x^2 \, dx = \frac{1}{3}
 $$
+
+```math
+f(x) = \begin{cases} x^2 & x \ge 0 \\ -x & \text{otherwise} \end{cases}
+```
+
+A formula martty can't typeset stays as code: $\notacommand{x}$.
 
 [ghostty]: https://ghostty.org
 
@@ -238,9 +245,9 @@ A table wider than the screen, whose cells should wrap:
 
 | Feature | Status | Description | Notes |
 |---|---|---|---|
-| Syntax highlighting | planned | Colors for keywords, strings, comments and numbers in fenced code blocks, taken from the terminal palette. | Needs a decision between syntect, tree-sitter and a small tokenizer. |
-| Table wrapping | planned | Cells wrap when the table is wider than the screen, with columns sized by their content. | This very table is the test case. |
-| Math | planned | Inline `$…$` and display `$$…$$` formulas. | No light LaTeX renderer in Rust yet. |
+| Syntax highlighting | done | Colors for keywords, strings, comments and numbers in fenced code blocks, taken from the terminal palette. | syntect with Oniguruma, behind the `highlight` feature. |
+| Table wrapping | done | Cells wrap when the table is wider than the screen, with columns sized by their content. | This very table is the test case. |
+| Math | done | Inline `$…$` and display `$$…$$` formulas. | latex-rust, behind the `math` feature. |
 
 ## Images
 

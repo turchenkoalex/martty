@@ -6,6 +6,7 @@ mod blocks;
 mod deflist;
 mod document;
 mod emoji;
+mod formulas;
 #[cfg(feature = "highlight")]
 mod highlight;
 mod html;
@@ -13,6 +14,7 @@ mod images;
 mod inline;
 mod layout;
 mod span;
+mod table;
 #[cfg(test)]
 mod tests;
 mod wrap;
@@ -31,13 +33,14 @@ use crate::mermaid;
 use crate::style::{Color, Style};
 use crate::term::Rgb;
 
-use blocks::{CodeBlock, Table};
+use blocks::CodeBlock;
 pub use document::{Document, ImageRow, Line};
 use html::OpenTag;
 use images::PendingImage;
 use inline::link_style;
 use layout::Container;
 use span::{Pen, Span};
+use table::Table;
 
 const ACCENT: Color = Color::Ansi(6);
 const LINK: Color = Color::Ansi(4);
@@ -63,6 +66,8 @@ pub struct Config {
     pub headings: Option<HeadingImages>,
     /// Mermaid code blocks rendered as images.
     pub diagrams: Option<Diagrams>,
+    /// LaTeX formulas rendered as images; `None` shows them as code.
+    pub math: Option<MathImages>,
     /// Kitty image ids are allocated upwards from here (24-bit, non-zero).
     pub first_image_id: u32,
 }
@@ -78,6 +83,12 @@ pub struct Diagrams {
     pub max_upscale: f32,
     /// Centre diagrams narrower than the available width.
     pub center: bool,
+}
+
+pub struct MathImages {
+    /// Cell size in pixels, `(width, height)`.
+    pub cell: (u32, u32),
+    pub color: Rgb,
 }
 
 pub struct HeadingImages {
@@ -104,7 +115,8 @@ pub fn render(markdown: &str, config: &Config) -> Document {
         | Options::ENABLE_GFM
         | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
         | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS
-        | Options::ENABLE_DEFINITION_LIST;
+        | Options::ENABLE_DEFINITION_LIST
+        | Options::ENABLE_MATH;
     let markdown = deflist::escape_false_markers(markdown, options);
     // An escape splits the text around it; merged back, a `:rocket:` right
     // after an escaped colon is still one piece for shortcode replacement.
@@ -244,9 +256,9 @@ impl<'c> Renderer<'c> {
                     self.push_prose(&text);
                 }
             }
-            Event::Code(text) | Event::InlineMath(text) | Event::DisplayMath(text) => {
-                self.push_code(&text);
-            }
+            Event::Code(text) => self.push_code(&text),
+            Event::InlineMath(text) => self.inline_math(&text),
+            Event::DisplayMath(text) => self.display_math(&text),
             Event::Html(text) => self.html(&text, true),
             Event::InlineHtml(text) => self.html(&text, false),
             Event::FootnoteReference(name) => {

@@ -22,6 +22,8 @@ of asterisks.
 - 📊 **Mermaid diagrams.** Flowcharts, sequence diagrams, pie charts and more, rendered
   locally without a browser and colored to match your Ghostty theme.
 - 🔠 **Big headings.** H1–H3 are drawn at large sizes with JetBrains Mono.
+- ∑ **Math.** LaTeX formulas, inline and display, typeset with TeX's rules in STIX Two
+  Math.
 - 🎨 **Theme-aware.** Highlighted code, diagrams and headings take their colors from your
   terminal's palette, so they suit both light and dark themes.
 - 📜 **Built-in pager.** Scrolling, search, mouse wheel, zoomable and pannable diagrams,
@@ -39,11 +41,12 @@ of asterisks.
 | Block quotes | Drawn with a left bar, including images inside quotes |
 | Alerts | GitHub `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` with a colored bar and title |
 | Code blocks | Syntax highlighting in the terminal palette's colors, on a background derived from your theme |
-| Tables | Column alignment (`:---:`, `---:`) |
+| Tables | Column alignment (`:---:`, `---:`); a table wider than the screen shrinks its columns by content and wraps the text in its cells |
 | Footnotes | `[^1]` style |
 | Definition lists | `Term` followed by `: definition` lines |
 | Images | Local PNG; a missing image falls back to its alt text |
 | Mermaid | ` ```mermaid ` blocks are rendered as diagrams, centered, with text at the terminal's size; click one to open it full screen |
+| Math | `$…$` inline, sitting on the text baseline; `$$…$$` and ` ```math ` blocks centered on their own rows. A formula latex-rust can't render shows as code |
 | Rules | `---` |
 | Emoji | Common GitHub shortcodes such as `:rocket:` and `:+1:` |
 | HTML | `<br>`, `<kbd>`, `<sub>`/`<sup>`, `<details>`/`<summary>` (expanded), `<b>`, `<i>`, `<mark>`, `<a>`, `<img>`; other tags are dropped and their text kept, comments hidden |
@@ -67,14 +70,15 @@ cargo build --release
 ./target/release/martty demo.md
 ```
 
-Two optional features are on by default:
+Three optional features are on by default:
 
 | Feature | Adds | Without it |
 |---|---|---|
 | `mermaid` | Mermaid diagrams via merman, about 10 MB | ` ```mermaid ` blocks show as code |
+| `math` | LaTeX formulas via latex-rust with the STIX Two Math font, about 2.5 MB | Formulas show as code |
 | `highlight` | Syntax highlighting via syntect, about 1 MB; builds the Oniguruma C library, so it needs a C compiler | Code blocks in one color |
 
-To leave both out, or pick one back:
+To leave them all out, or pick some back:
 
 ```sh
 cargo install --path . --no-default-features
@@ -149,8 +153,8 @@ detection gets something wrong, override it with environment variables:
 | `MARTTY_TEXT_SIZING` | `0` / `1` | Disable or force OSC 66 text sizing for headings |
 | `NO_COLOR` | any non-empty | No colors: text keeps bold, italic and underline; images, diagrams and image headings are off, as with `MARTTY_IMAGES=0` |
 
-When graphics are not available, martty falls back to plain styled text: diagrams show up
-as code blocks and images as their alt text.
+When graphics are not available, martty falls back to plain styled text: diagrams and
+formulas show up as code and images as their alt text.
 
 ## How it works
 
@@ -162,6 +166,7 @@ flowchart LR
     R -->|mermaid| M[merman] --> S[resvg]
     R -->|image| I[PNG]
     R -->|H1–H3| F[fontdue]
+    R -->|math| X[latex-rust] --> S
     S --> K[kitty graphics<br/>Unicode placeholders]
     I --> K
     F --> K
@@ -179,6 +184,7 @@ of lines and never re-sends pixels.
 | `term.rs` | Capability probing, raw mode, terminal size |
 | `kitty.rs`, `diacritics.rs` | kitty graphics transmission and Unicode placeholders |
 | `mermaid.rs` | Diagram rendering with theme colors |
+| `math.rs` | LaTeX formulas rasterized at the terminal's text size |
 | `heading.rs` | Large headings rasterized with fontdue |
 | `pager/` | The `less`-like pager |
 | `style.rs` | Colors and text attributes |
@@ -190,7 +196,7 @@ of lines and never re-sends pixels.
 - Only **PNG** images for now; JPEG, GIF, WebP and SVG are on the roadmap.
 - Headings drawn as images can't be copied as text. They will switch back to text once
   Ghostty implements OSC 66.
-- Wide tables don't wrap yet.
+- Formulas are images too: they can't be copied as text.
 
 ## Development
 
@@ -211,10 +217,14 @@ See [ROADMAP.md](ROADMAP.md) for planned work, in Russian: more image formats, l
   [resvg](https://github.com/linebender/resvg) for diagrams
 - [fontdue](https://github.com/mooman219/fontdue) for glyph rasterization
 - [syntect](https://github.com/trishume/syntect) for syntax highlighting
+- [latex-rust](https://github.com/jscarr64/latex-rust) for typesetting math, with the
+  [STIX Two Math](https://github.com/stipub/stixfonts) font it bundles under the SIL Open
+  Font License
 - [JetBrains Mono](https://www.jetbrains.com/lp/mono/), bundled under the
   [SIL Open Font License](assets/fonts/OFL.txt)
 
 ## License
 
 martty is licensed under the [Apache License 2.0](LICENSE). The bundled JetBrains Mono font
-is licensed separately under the [SIL Open Font License 1.1](assets/fonts/OFL.txt).
+is licensed separately under the [SIL Open Font License 1.1](assets/fonts/OFL.txt), as is
+STIX Two Math, which latex-rust embeds with the `math` feature.

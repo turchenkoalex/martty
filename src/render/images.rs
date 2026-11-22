@@ -48,12 +48,8 @@ impl Renderer<'_> {
         indent: usize,
         transmit: impl FnOnce(&mut String, u32),
     ) -> u32 {
-        let n = u32::try_from(self.image_ids.len()).unwrap_or(0);
-        let id = (self.cfg.first_image_id.wrapping_add(n) & 0x00FF_FFFF).max(1);
-        self.image_ids.push(id);
-        transmit(&mut self.preamble, id);
-        let (r, g, b) = kitty::id_color(id);
-        let style = Style::fg(Color::Rgb(r, g, b));
+        let id = self.upload(transmit);
+        let style = image_style(id);
         let avail = u32::try_from(self.avail().saturating_sub(indent)).unwrap_or(u32::MAX);
         let visible = cols.min(avail);
         for row in 0..rows.min(kitty::MAX_ROWS) {
@@ -73,6 +69,15 @@ impl Renderer<'_> {
             };
             self.image_rows.push((self.line_no - 1, info));
         }
+        id
+    }
+
+    /// Allocates the next image id and transmits the image into the preamble.
+    pub(super) fn upload(&mut self, transmit: impl FnOnce(&mut String, u32)) -> u32 {
+        let n = u32::try_from(self.image_ids.len()).unwrap_or(0);
+        let id = (self.cfg.first_image_id.wrapping_add(n) & 0x00FF_FFFF).max(1);
+        self.image_ids.push(id);
+        transmit(&mut self.preamble, id);
         id
     }
 
@@ -140,6 +145,12 @@ impl Renderer<'_> {
         }
         true
     }
+}
+
+/// Placeholder cells name their image by the foreground color.
+pub(super) fn image_style(id: u32) -> Style {
+    let (r, g, b) = kitty::id_color(id);
+    Style::fg(Color::Rgb(r, g, b))
 }
 
 /// Local path for an image URL; remote images are not supported.

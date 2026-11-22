@@ -1,0 +1,11 @@
+Inline $e = mc^2$ and $\alpha + \beta$, shown as code without graphics.
+
+Prices are not math: it costs $5 and $10.
+
+Text before
+$$\int_0^\infty e^{-x^2}\,dx = \frac{\sqrt{\pi}}{2}$$
+text after.
+
+```math
+\sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}
+```

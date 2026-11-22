@@ -7,6 +7,7 @@ license = "Apache-2.0"
 
 [dependencies]
 fontdue = "0.9.5"
+latex-rust = { version = "3.0.3", optional = true }
 libc = "0.2.191"
 merman = { version = "0.11.0", default-features = false, features = ["svg", "diagram-flowchart", "diagram-sequence", "diagram-class", "diagram-state", "diagram-er", "diagram-pie", "diagram-gantt", "diagram-journey", "diagram-git-graph", "diagram-timeline", "diagram-xychart", "diagram-quadrant-chart", "diagram-requirement"], optional = true }
 miniz_oxide = "0.9.1"
@@ -18,9 +19,12 @@ syntect = { version = "5.3.0", default-features = false, features = ["default-sy
 unicode-width = "0.2.3"
 
 [features]
-default = ["highlight", "mermaid"]
+default = ["highlight", "math", "mermaid"]
 # Syntax highlighting in code blocks (syntect, about 1 MB).
 highlight = ["dep:syntect"]
+# LaTeX formulas as images (latex-rust with STIX Two Math, about 2.5 MB):
+# without it they show as code.
+math = ["dep:latex-rust"]
 # Mermaid diagrams (merman, about 10 MB): without it they show as code.
 mermaid = ["dep:merman", "dep:serde_json"]
 

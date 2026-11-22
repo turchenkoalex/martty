@@ -16,7 +16,7 @@ use crate::diacritics::DIACRITICS;
 pub const MAX_ROWS: u32 = DIACRITICS.len() as u32;
 /// Furthest column a placeholder row can start at (horizontal panning).
 pub const MAX_COL: u32 = DIACRITICS.len() as u32 - 1;
-const PLACEHOLDER: char = '\u{10EEEE}';
+pub const PLACEHOLDER: char = '\u{10EEEE}';
 
 /// Max payload per escape, per the protocol spec.
 const CHUNK: usize = 4096;

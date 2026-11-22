@@ -1,6 +1,6 @@
 use std::mem;
 
-use pulldown_cmark::{Alignment, HeadingLevel};
+use pulldown_cmark::HeadingLevel;
 use unicode_width::UnicodeWidthStr;
 
 use super::Renderer;
@@ -14,15 +14,6 @@ use crate::style::{Color, Style, Underline};
 pub(super) struct CodeBlock {
     pub(super) lang: String,
     pub(super) text: String,
-}
-
-pub(super) type Cell = Vec<Span>;
-
-pub(super) struct Table {
-    pub(super) aligns: Vec<Alignment>,
-    pub(super) rows: Vec<Vec<Cell>>,
-    pub(super) header_rows: usize,
-    pub(super) row: Vec<Cell>,
 }
 
 #[cfg(not(feature = "highlight"))]
@@ -85,6 +76,9 @@ impl Renderer<'_> {
 
     pub(super) fn render_code(&mut self, code: &CodeBlock) {
         if code.lang == "mermaid" && self.diagram(&code.text) {
+            return;
+        }
+        if code.lang == "math" && self.math_block(&code.text) {
             return;
         }
         let avail = self.avail();
@@ -180,59 +174,6 @@ impl Renderer<'_> {
             }
             self.containers.pop();
         }
-    }
-
-    pub(super) fn render_table(&mut self, table: &Table) {
-        let cols = table.rows.iter().map(Vec::len).max().unwrap_or(0);
-        if cols == 0 {
-            return;
-        }
-        let widths: Vec<usize> = (0..cols)
-            .map(|i| {
-                table
-                    .rows
-                    .iter()
-                    .filter_map(|row| row.get(i))
-                    .map(|cell| spans_width(cell))
-                    .max()
-                    .unwrap_or(0)
-                    .max(1)
-            })
-            .collect();
-        let border = Style::fg(Color::Ansi(8));
-        let rule = |l: &str, m: &str, r: &str| {
-            let inner: Vec<String> = widths.iter().map(|w| "─".repeat(w + 2)).collect();
-            vec![Span::new(
-                format!("{l}{}{r}", inner.join(m)),
-                border.clone(),
-            )]
-        };
-
-        self.emit_line(&rule("┌", "┬", "┐"));
-        for (r, row) in table.rows.iter().enumerate() {
-            if r == table.header_rows && r > 0 {
-                self.emit_line(&rule("├", "┼", "┤"));
-            }
-            let mut line = vec![Span::new("│", border.clone())];
-            for (i, width) in widths.iter().enumerate() {
-                let mut cell = row.get(i).cloned().unwrap_or_default();
-                if r < table.header_rows {
-                    cell.iter_mut().for_each(|s| s.style.bold = true);
-                }
-                let gap = width - spans_width(&cell).min(*width);
-                let left = match table.aligns.get(i) {
-                    Some(Alignment::Right) => gap,
-                    Some(Alignment::Center) => gap / 2,
-                    _ => 0,
-                };
-                line.push(Span::new(" ".repeat(left + 1), Style::default()));
-                line.extend(cell);
-                line.push(Span::new(" ".repeat(gap - left + 1), Style::default()));
-                line.push(Span::new("│", border.clone()));
-            }
-            self.emit_line(&line);
-        }
-        self.emit_line(&rule("└", "┴", "┘"));
     }
 }
 

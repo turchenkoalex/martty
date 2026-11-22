@@ -37,7 +37,9 @@ src/
 │   ├── document.rs # rendered Document, lines, image rows for panning
 │   ├── layout.rs  # containers (quotes, list items), line prefixes, block spacing
 │   ├── inline.rs  # inline styles, code spans, list and task markers
-│   ├── blocks.rs  # headings, code blocks, tables, rules
+│   ├── blocks.rs  # headings, code blocks, rules, front matter
+│   ├── table.rs   # tables: column widths, wrapping inside cells
+│   ├── formulas.rs # inline and display math placed as images
 │   ├── highlight.rs # syntect scopes → palette colors (feature `highlight`)
 │   ├── images.rs  # images, diagrams and image headings placed via kitty
 │   ├── span.rs    # styled text spans and their SGR/OSC 8 output
@@ -47,6 +49,7 @@ src/
 ├── kitty.rs       # kitty graphics transmission and Unicode placeholders
 ├── diacritics.rs  # generated row/column diacritics table, don't edit by hand
 ├── mermaid.rs     # merman → SVG → resvg → kitty (feature `mermaid`)
+├── math.rs        # LaTeX → latex-rust SVG → resvg → kitty (feature `math`)
 ├── heading.rs     # H1–H3 rasterized with fontdue + bundled JetBrains Mono
 └── pager/         # alternate-screen pager
     ├── mod.rs     # `run` loop, view stack, relayout, terminal enter/leave
@@ -65,6 +68,8 @@ src/
   `MARTTY_TEXT_SIZING` override detection.
 - Colors follow the user's theme: derive them from the probed palette and
   foreground/background, never hardcode a light or dark scheme.
+- An inline image (a `$…$` formula) is one row of placeholder cells inside a text span, so
+  it wraps with the words around it; it must never be wider than the line.
 - H1–H3 are images only until Ghostty supports OSC 66; then they go back to text.
 
 ## Dependencies

@@ -14,3 +14,23 @@ expression: "strip_ansi(&render(&md, &cfg))"
 ├────────┤
 │ row    │
 └────────┘
+
+┌────────────────┬─────────┬───────────────────────────────┐
+│ Feature        │ Status  │ Description                   │
+├────────────────┼─────────┼───────────────────────────────┤
+│ Syntax         │  done   │ Colors for keywords, strings, │
+│ highlighting   │         │ comments and numbers in       │
+│                │         │ fenced code blocks.           │
+├────────────────┼─────────┼───────────────────────────────┤
+│ Table wrapping │  done   │ Cells wrap when the table is  │
+│                │         │ wider than the screen.        │
+├────────────────┼─────────┼───────────────────────────────┤
+│ Math           │ planned │ Inline and display formulas.  │
+└────────────────┴─────────┴───────────────────────────────┘
+
+┌─────────────┐
+│ Line breaks │
+├─────────────┤
+│ one         │
+│ two         │
+└─────────────┘

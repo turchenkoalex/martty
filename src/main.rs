@@ -9,6 +9,7 @@
 mod diacritics;
 mod heading;
 mod kitty;
+mod math;
 mod mermaid;
 mod pager;
 mod render;
@@ -22,7 +23,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use heading::HeadingFont;
 use pager::Layout;
-use render::{Config, Diagrams, Document, HeadingImages, Images};
+use render::{Config, Diagrams, Document, HeadingImages, Images, MathImages};
 use style::Color;
 use term::{Caps, Rgb, Size, luma, mix};
 
@@ -230,6 +231,10 @@ fn config(
             // The pager centres a full-screen diagram itself.
             center: !fullscreen,
         });
+    // Without the feature, formulas are shown as code.
+    let math = cell
+        .filter(|_| cfg!(feature = "math"))
+        .map(|cell| MathImages { cell, color: fg });
     let images = cell.map(|cell| Images {
         cell,
         max_rows,
@@ -246,6 +251,7 @@ fn config(
         images,
         headings,
         diagrams,
+        math,
         first_image_id,
     }
 }
