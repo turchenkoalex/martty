@@ -108,6 +108,6 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
             --repo "$GITHUB_REPOSITORY" \
-            --title "martty ${GITHUB_REF_NAME#v}" \
+            --title "${GITHUB_REF_NAME#v}" \
             --generate-notes \
             --verify-tag
