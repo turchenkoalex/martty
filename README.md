@@ -158,7 +158,7 @@ of lines and never re-sends pixels.
 | `kitty.rs`, `diacritics.rs` | kitty graphics transmission and Unicode placeholders |
 | `mermaid.rs` | Diagram rendering with theme colors |
 | `heading.rs` | Large headings rasterized with fontdue |
-| `pager.rs` | The `less`-like pager |
+| `pager/` | The `less`-like pager |
 | `style.rs` | Colors and text attributes |
 
 ## Limitations

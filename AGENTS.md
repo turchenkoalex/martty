@@ -44,7 +44,12 @@ src/
 ├── diacritics.rs  # generated row/column diacritics table, don't edit by hand
 ├── mermaid.rs     # mermaid-rs-renderer → SVG → resvg → kitty
 ├── heading.rs     # H1–H3 rasterized with fontdue + bundled JetBrains Mono
-└── pager.rs       # alternate-screen pager, search, zoom, pan, mouse
+└── pager/         # alternate-screen pager
+    ├── mod.rs     # `run` loop, view stack, relayout, terminal enter/leave
+    ├── view.rs    # one view: document, scroll, pan, zoom, search text
+    ├── keys.rs    # reading the tty, keys and SGR mouse reports
+    ├── input.rs   # key bindings, scrolling, search, zoom, pan
+    └── draw.rs    # frame and status line
 ```
 
 - Images are transmitted once and then placed as Unicode placeholder characters, so every
@@ -69,7 +74,7 @@ off and enable only what is used; put heavy optional functionality behind a carg
 - **No `unwrap`/`expect`** in non-test code (clippy warns on both). Return a `Result` or
   handle the failure; a missing capability or a broken image falls back to text, it never
   panics.
-- **`unsafe` stays in `term.rs` and `pager.rs`** for the `libc` terminal calls (`poll`,
+- **`unsafe` stays in `term.rs` and `pager/keys.rs`** for the `libc` terminal calls (`poll`,
   `ioctl`, `tcgetattr`/`tcsetattr`). Keep each block to the single call and don't spread it
   to other modules.
 - **Restore the terminal on every exit path**: raw mode, alternate screen, mouse reporting.

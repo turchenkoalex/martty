@@ -11,7 +11,7 @@ const MAX_CODE_LINES: usize = 500;
 /// Files over the cap, with their size when they were listed. They may
 /// shrink but not grow; lower the number after moving code out, and drop
 /// the entry once the file fits.
-const OVERSIZED_FILES: &[(&str, usize)] = &[("src/pager.rs", 568)];
+const OVERSIZED_FILES: &[(&str, usize)] = &[];
 
 fn code_lines(source: &str) -> usize {
     let mut lines: Vec<&str> = source.lines().collect();
