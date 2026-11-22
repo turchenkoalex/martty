@@ -281,3 +281,34 @@ fn render_should_center_small_diagrams_when_asked() {
     assert!(centered > 0);
     assert_eq!(diagram_indent(false), Some(0));
 }
+
+#[test]
+fn render_should_keep_line_starting_with_colon_in_paragraph() {
+    assert_eq!(
+        render_plain("unknown\n:not_an_emoji: and\n::path"),
+        "unknown :not_an_emoji: and ::path\n"
+    );
+}
+
+#[test]
+fn render_should_replace_shortcode_at_line_start_after_undoing_definition() {
+    assert_eq!(render_plain("ship\n:rocket: now"), "ship 🚀 now\n");
+}
+
+#[test]
+fn render_should_keep_loose_colon_paragraph_separate() {
+    assert_eq!(render_plain("a\n\n:x\n\nb"), "a\n\n:x\n\nb\n");
+}
+
+#[test]
+fn render_should_undo_fake_definition_inside_list_item() {
+    assert_eq!(render_plain("- item\n  :x"), "• item :x\n");
+}
+
+#[test]
+fn render_should_only_start_definitions_at_colon_and_space() {
+    assert_eq!(
+        render_plain("T\n: ok\n:not\n\nU\n: two"),
+        "T\n  ok :not\nU\n  two\n"
+    );
+}

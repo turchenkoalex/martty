@@ -3,6 +3,7 @@
 //! containers (block quotes, list items).
 
 mod blocks;
+mod deflist;
 mod document;
 mod emoji;
 mod html;
@@ -20,6 +21,7 @@ use std::path::PathBuf;
 
 use pulldown_cmark::{
     CodeBlockKind, Event, HeadingLevel, MetadataBlockKind, Options, Parser, Tag, TagEnd,
+    TextMergeStream,
 };
 
 use crate::heading::HeadingFont;
@@ -99,7 +101,11 @@ pub fn render(markdown: &str, config: &Config) -> Document {
         | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
         | Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS
         | Options::ENABLE_DEFINITION_LIST;
-    let events: Vec<Event<'_>> = Parser::new_ext(markdown, options).collect();
+    let markdown = deflist::escape_false_markers(markdown, options);
+    // An escape splits the text around it; merged back, a `:rocket:` right
+    // after an escaped colon is still one piece for shortcode replacement.
+    let events: Vec<Event<'_>> =
+        TextMergeStream::new(Parser::new_ext(&markdown, options)).collect();
     let mut renderer = Renderer::new(config);
     renderer.list_lengths = ordered_list_lengths(&events);
     for event in events {
