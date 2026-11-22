@@ -134,6 +134,19 @@ When a module grows, turn it into a directory module and split it by concern, as
 `render/` is. When changing an oversized file, first move out the part being changed, then
 lower its cap. Raising a cap is a deliberate exception; say why in the commit message.
 
+## Changelog and releases
+
+`CHANGELOG.md` is the one description of each release. Note a user-facing change under
+`## Unreleased` in the commit that makes it: what the reader notices, not how the code
+changed. A release renames that heading to `## [X.Y.Z] - YYYY-MM-DD`, starts a new empty
+`## Unreleased` above it and adds the compare link at the bottom, in the same commit as the
+version bump.
+
+`.github/changelog.py` turns the file into the GitHub release notes (`notes X.Y.Z`, used by
+`release.yml`, which fails on a tag without its section) and the site's changelog page
+(`page`, run by `pages.yml` on `site/changelog.html`). To preview the page:
+`python3 .github/changelog.py page site/changelog.html /tmp/changelog.html`.
+
 ## Testing
 
 Unit tests sit inline in `#[cfg(test)] mod tests` blocks. Test rendering on its text

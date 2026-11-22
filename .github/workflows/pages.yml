@@ -3,7 +3,7 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: [site/**, .github/workflows/pages.yml]
+    paths: [site/**, CHANGELOG.md, .github/changelog.py, .github/workflows/pages.yml]
   workflow_dispatch:
 
 permissions:
@@ -26,6 +26,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
+      # The changelog page is CHANGELOG.md laid into site/changelog.html.
+      - run: python3 .github/changelog.py page site/changelog.html site/changelog.html
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site

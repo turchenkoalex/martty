@@ -45,6 +45,9 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME doesn't match version $version in Cargo.toml"
             exit 1
           fi
+          # The release notes come from CHANGELOG.md: fail before building
+          # anything when this version has no section there.
+          python3 .github/changelog.py notes "$version" > /dev/null
 
       # Oniguruma and ring (rustls) are C, compiled against musl.
       - name: Install musl
@@ -98,6 +101,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -106,10 +110,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          python3 .github/changelog.py notes "${GITHUB_REF_NAME#v}" > notes.md
           gh release create "$GITHUB_REF_NAME" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "${GITHUB_REF_NAME#v}" \
-            --generate-notes \
+            --notes-file notes.md \
             --verify-tag
 
   # Points the formula in turchenkoalex/homebrew-tap at the new archives.

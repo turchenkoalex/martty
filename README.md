@@ -114,6 +114,9 @@ cargo build --release
 ./target/release/martty demo.md
 ```
 
+What changed in each release is in [CHANGELOG.md](CHANGELOG.md), also on the
+[site](https://turchenkoalex.github.io/martty/changelog.html).
+
 ## Usage
 
 ```sh
