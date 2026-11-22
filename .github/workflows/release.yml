@@ -57,6 +57,7 @@ jobs:
         run: |
           bin=target/${{ matrix.target }}/release/martty
           "$bin" --help
+          "$bin" --version
           printf '# Hello\n\n- one\n- two\n' | MARTTY_NO_COLOR=1 "$bin" -P --width 40
 
       - name: Package

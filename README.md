@@ -112,6 +112,7 @@ martty -w README.md         # reload whenever README.md is saved
 
 ```
 usage: martty [-p|--pager] [-P|--no-pager] [-w|--follow] [--remote] [--width N] [FILE]
+       martty -V|--version
 ```
 
 | Flag | Meaning |
@@ -122,6 +123,7 @@ usage: martty [-p|--pager] [-P|--no-pager] [-w|--follow] [--remote] [--width N] 
 | `-w`, `--follow` | Open the pager and lay the file out again whenever it changes, keeping your place |
 | `--width N` | Lay out text for `N` columns instead of the terminal width (80 when it is unknown, as in a pipe) |
 | `-h`, `--help` | Show usage |
+| `-V`, `--version` | Show the version |
 
 By default martty prints the document directly. If the output is taller than the screen
 and stdout is a terminal, it opens the pager. Relative image paths are resolved against the

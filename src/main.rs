@@ -5,7 +5,7 @@
 //! `-p` forces it, `-P` disables it. `-w` opens the pager and follows changes
 //! to FILE. `--width` lays text out for N columns instead of the terminal
 //! width. `--remote` (or `MARTTY_REMOTE=1`) loads https images; it is off
-//! otherwise. Set `MARTTY_TEXT_SIZING=0|1` / `MARTTY_IMAGES=0|1`
+//! otherwise. `-V` prints the version. Set `MARTTY_TEXT_SIZING=0|1` / `MARTTY_IMAGES=0|1`
 //! to override capability detection; `MARTTY_NO_COLOR=1` turns off colors and
 //! images. Every setting martty reads from the environment has the `MARTTY_`
 //! prefix.
@@ -36,7 +36,8 @@ use style::Color;
 use term::{Caps, Rgb, Size, Theme, luma, mix};
 
 const USAGE: &str =
-    "usage: martty [-p|--pager] [-P|--no-pager] [-w|--follow] [--remote] [--width N] [FILE]";
+    "usage: martty [-p|--pager] [-P|--no-pager] [-w|--follow] [--remote] [--width N] [FILE]
+       martty -V|--version";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Paging {
@@ -202,6 +203,11 @@ fn parse_args() -> io::Result<Args> {
             Some("--remote") => args.remote = true,
             Some("-h" | "--help") => {
                 println!("{USAGE}");
+                std::process::exit(0);
+            }
+            // The release workflow checks that the tag matches this version.
+            Some("-V" | "--version") => {
+                println!("martty {}", env!("CARGO_PKG_VERSION"));
                 std::process::exit(0);
             }
             Some(flag) if flag.starts_with('-') && flag != "-" => {
