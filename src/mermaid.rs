@@ -185,6 +185,8 @@ mod merman_svg {
 
     /// Bundled, so the font resvg draws with is the one text was measured in.
     const FONT_FAMILY: &str = "\"JetBrains Mono\", monospace";
+    /// Where flowchart labels wrap, in SVG pixels at `FONT_SIZE`.
+    const WRAPPING_WIDTH: f64 = 280.0;
     /// JetBrains Mono advances every glyph by 600/1000 em.
     const ADVANCE_EM: f64 = 0.6;
 
@@ -291,7 +293,11 @@ mod merman_svg {
         json!({
             "theme": "base",
             "htmlLabels": false,
-            "flowchart": { "htmlLabels": false },
+            // Mermaid wraps labels at 200px, set explicitly: left unset,
+            // merman wraps SVG labels at ~120px. Monospace text is wider than
+            // Mermaid's proportional font, so 280px keeps about as many
+            // words on a line and long identifiers whole.
+            "flowchart": { "htmlLabels": false, "wrappingWidth": WRAPPING_WIDTH },
             "themeVariables": vars,
         })
     }

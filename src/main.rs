@@ -297,14 +297,15 @@ fn config(
         },
         cell,
         // Full screen, a diagram at zoom 1 fills the screen above the pager
-        // status line. In the document it keeps the terminal's text size and
-        // the image height cap; a click opens it larger.
+        // status line. In the document it fits the width only and keeps the
+        // terminal's text size, however many rows that takes (a tall one is
+        // scrolled, not shrunk to unreadable text); `v` opens it whole.
         max_rows: if fullscreen {
             u32::try_from(size.rows.saturating_sub(1))
                 .unwrap_or(u32::MAX)
                 .clamp(1, kitty::MAX_ROWS)
         } else {
-            max_rows
+            kitty::MAX_ROWS
         },
         zoom,
         max_upscale: if fullscreen { f32::INFINITY } else { 1.0 },
