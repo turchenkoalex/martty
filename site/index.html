@@ -143,16 +143,19 @@ h1 em { font-style: normal; color: var(--accent); }
 .copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 13px 0; }
 .copy span b { color: var(--accent); font-weight: 400; }
 .copy button {
-  border: 0; background: var(--bg-2); color: var(--muted); border-radius: 7px; padding: 7px 10px; cursor: pointer;
-  font: 12px/1 "JetBrains Mono", monospace; flex: none;
+  border: 0; background: var(--bg-2); color: var(--muted); border-radius: 7px; width: 32px; height: 32px; cursor: pointer;
+  display: grid; place-items: center; flex: none;
 }
 .copy button:hover { color: var(--fg); }
+.copy button svg { width: 16px; height: 16px; grid-area: 1 / 1; }
+.copy button .done, .copy button.copied .idle { display: none; }
+.copy button.copied .done { display: block; color: var(--t-green); }
 /* Where the three don't fit on one row, the buttons stay together and the command goes below. */
 @media (max-width: 860px) { .copy { order: 3; } }
 @media (max-width: 560px) {
   .cta { gap: 10px; }
   .cta .btn { flex: 1 1 0; justify-content: center; padding: 13px 10px; gap: 8px; font-size: 14px; white-space: nowrap; }
-  .copy { order: 3; width: 100%; font-size: 13px; }
+  .copy { order: 3; width: 100%; font-size: 12px; gap: 8px; padding-left: 12px; }
   .copy span { white-space: normal; line-height: 1.5; padding: 10px 0; text-align: left; }
 }
 
@@ -307,7 +310,7 @@ footer a:hover { color: var(--fg); }
     <p class="lede">A tiny, fast viewer with real images, Mermaid diagrams, LaTeX math, big headings and a <code>less</code>-style pager. Your README looks like a document, not a dump of asterisks.</p>
     <div class="cta">
       <a class="btn primary" href="#install"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>Download</a>
-      <div class="copy"><span><b>$</b> brew install turchenkoalex/tap/martty</span><button data-copy="brew install turchenkoalex/tap/martty">copy</button></div>
+      <div class="copy"><span><b>$</b> brew install turchenkoalex/tap/martty</span><button data-copy="brew install turchenkoalex/tap/martty" aria-label="Copy the command" title="Copy"><svg class="idle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg><svg class="done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg></button></div>
       <a class="btn ghost" href="https://github.com/turchenkoalex/martty">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
         View on GitHub
@@ -644,9 +647,15 @@ Euler: <span class="m">$</span>e^{i\pi} + 1 = 0<span class="m">$</span>
 
   document.querySelectorAll("[data-copy]").forEach(b => {
     b.addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "copied"; }
-      catch (e) { b.textContent = "select it"; }
-      setTimeout(() => (b.textContent = "copy"), 1500);
+      try {
+        await navigator.clipboard.writeText(b.dataset.copy);
+        b.classList.add("copied");
+        b.setAttribute("aria-label", "Copied");
+        setTimeout(() => { b.classList.remove("copied"); b.setAttribute("aria-label", "Copy the command"); }, 1500);
+      } catch (e) {
+        // No clipboard access (plain http, permissions): select the command so it can be copied by hand.
+        getSelection().selectAllChildren(b.previousElementSibling);
+      }
     });
   });
 })();
