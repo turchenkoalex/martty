@@ -9,6 +9,7 @@ What changed in each release of martty, newest first. The binaries are on the
 
 - **Activity in Rex.** While martty downloads a document or lays out a slow one, Rex shows a spinner on its tab with what it is doing, and an error martty exits with stays marked on the tab. In Ghostty the progress bar now shows during downloads too. Both show how much of a download is done, when the server says its size.
 - **Rex marks the tab when a followed file changes.** With `-w` or `F`, a change to the file marks martty's tab as done in Rex, as a finished build does, so you know to look.
+- **A failed download in the pager marks the tab in Rex.** When `Enter` on a link to a Markdown file on the web can't download it, Rex marks the tab with the error, as well as the status line saying so, until the next key.
 - **The tab is named after the document.** The pager sets the tab title to the file it shows, a file opened from a link included, and clears it on exit.
 - **The Markdown source in the pager.** `s` shows the document as the Markdown it was written in, highlighted and with line numbers, and `s` again goes back to the rendered view at the same place. Search, `[`/`]`, the table of contents, copying and `-w` work there too.
 

@@ -237,6 +237,8 @@ struct Pager<'a> {
     active: bool,
     /// The tab title last set (OSC 2); `None` after entering the screen.
     tab_title: Option<String>,
+    /// A failed download was reported to the terminal; the next key clears it.
+    failed: bool,
 }
 
 impl<'a> Pager<'a> {
@@ -256,6 +258,7 @@ impl<'a> Pager<'a> {
             theme: Theme::default(),
             active: false,
             tab_title: None,
+            failed: false,
         }
     }
 
@@ -322,6 +325,11 @@ impl<'a> Pager<'a> {
         key: keys::Key,
         render: &mut impl FnMut(Layout<'_>, Params) -> Document,
     ) -> io::Result<Action> {
+        // The pager went on after the failure; once the user is back at the
+        // keys, the terminal shouldn't keep it marked as stopped.
+        if std::mem::take(&mut self.failed) {
+            progress::report(Status::Idle);
+        }
         let action = self.handle(key);
         match &action {
             Action::Continue | Action::Quit | Action::Edit => {}
@@ -461,7 +469,10 @@ impl<'a> Pager<'a> {
             match web::fetch(&url) {
                 Ok(markdown) => Kind::Remote { url, markdown },
                 Err(e) => {
-                    self.message = Some(format!("Can't download {e}"));
+                    let message = format!("Can't download {e}");
+                    progress::report(Status::Failed(&message));
+                    self.failed = true;
+                    self.message = Some(message);
                     return Ok(());
                 }
             }
