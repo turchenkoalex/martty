@@ -12,9 +12,10 @@ use std::sync::OnceLock;
 /// What martty is doing, for the terminal's activity indicator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status<'a> {
-    /// Busy for a noticeable while: laying out, downloading. One line for
-    /// people, such as `Downloading README.md`.
-    Working(&'a str),
+    /// Busy for a noticeable while: laying out, downloading. `what` is one
+    /// line for people, such as `Downloading README.md`; `progress` is the
+    /// share done in percent, when known.
+    Working { what: &'a str, progress: Option<u8> },
     /// The work is over; martty shows the result or waits for keys.
     Idle,
     /// martty stopped on this error.

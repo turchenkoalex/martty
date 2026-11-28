@@ -28,8 +28,11 @@ impl Terminal for Ghostty {
 
     fn status(&self, status: Status<'_>) -> String {
         match status {
-            // OSC 9;4 state 3: indeterminate.
-            Status::Working(_) => "\x1b]9;4;3\x1b\\".into(),
+            // OSC 9;4 state 1: a percentage; state 3: indeterminate.
+            Status::Working {
+                progress: Some(p), ..
+            } => format!("\x1b]9;4;1;{}\x1b\\", p.min(100)),
+            Status::Working { progress: None, .. } => "\x1b]9;4;3\x1b\\".into(),
             // OSC 9;4 state 0: remove the indicator.
             Status::Idle => "\x1b]9;4;0\x1b\\".into(),
             // The error state would stay on the tab over the shell prompt,
@@ -76,7 +79,12 @@ mod tests {
 
     #[test]
     fn status_should_set_and_remove_progress() {
-        assert_eq!(Ghostty.status(Status::Working("x")), "\x1b]9;4;3\x1b\\");
+        let working = |progress| Status::Working {
+            what: "x",
+            progress,
+        };
+        assert_eq!(Ghostty.status(working(None)), "\x1b]9;4;3\x1b\\");
+        assert_eq!(Ghostty.status(working(Some(40))), "\x1b]9;4;1;40\x1b\\");
         assert_eq!(Ghostty.status(Status::Idle), "\x1b]9;4;0\x1b\\");
         assert_eq!(Ghostty.status(Status::Failed("x")), "");
     }

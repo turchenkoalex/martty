@@ -2,6 +2,7 @@
 //! Status Protocol (OSC 7501), which Rex shows on tabs and in the session
 //! picker. Rex has no Ghostty config and doesn't show OSC 9;4.
 
+use std::fmt::Write as _;
 use std::process::{Command, Stdio};
 
 use super::{Status, Terminal};
@@ -32,7 +33,13 @@ impl Terminal for Rex {
     /// `error` stays for the user to find.
     fn status(&self, status: Status<'_>) -> String {
         let body = match status {
-            Status::Working(msg) => format!("state=working:app=martty:msg={}", encode(msg)),
+            Status::Working { what, progress } => {
+                let mut body = format!("state=working:app=martty:msg={}", encode(what));
+                if let Some(p) = progress {
+                    let _ = write!(body, ":progress={}", p.min(100));
+                }
+                body
+            }
             Status::Idle => "state=idle:app=martty".to_owned(),
             Status::Failed(msg) => format!("state=error:app=martty:msg={}", encode(msg)),
         };
@@ -57,9 +64,17 @@ mod tests {
 
     #[test]
     fn status_should_report_working_with_message() {
+        let working = |progress| Status::Working {
+            what: "Hi",
+            progress,
+        };
         assert_eq!(
-            Rex.status(Status::Working("Hi")),
+            Rex.status(working(None)),
             "\x1b]7501;state=working:app=martty:msg=SGk=\x1b\\"
+        );
+        assert_eq!(
+            Rex.status(working(Some(40))),
+            "\x1b]7501;state=working:app=martty:msg=SGk=:progress=40\x1b\\"
         );
         assert_eq!(
             Rex.status(Status::Idle),

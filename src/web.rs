@@ -5,11 +5,13 @@
 //! network are fine. It is fetched once per run, with no disk cache, and is
 //! independent of `--remote`.
 
-use std::io;
+use std::io::{self, Read};
 use std::sync::Arc;
 use std::time::Duration;
 
 use ureq::config::AutoHeaderValue;
+
+use crate::progress::Busy;
 
 /// Larger than any Markdown file people read in a terminal.
 const MAX_BYTES: u64 = 16 << 20;
@@ -61,7 +63,7 @@ pub fn fetch(url: &str) -> io::Result<String> {
         .user_agent(AutoHeaderValue::Provided(Arc::new("martty".to_owned())))
         .build();
     let agent = ureq::Agent::new_with_config(config);
-    let _busy = crate::progress::Busy::start(&format!("Downloading {}", title(url)));
+    let busy = Busy::start(&format!("Downloading {}", title(url)));
     let mut response = agent.get(url).call().map_err(failed)?;
     let content_type = response
         .headers()
@@ -73,13 +75,37 @@ pub fn fetch(url: &str) -> io::Result<String> {
             format!("{url}: an HTML page, not a Markdown file"),
         ));
     }
-    let bytes = response
-        .body_mut()
-        .with_config()
-        .limit(MAX_BYTES)
-        .read_to_vec()
-        .map_err(failed)?;
+    let total = response.body().content_length().filter(|&n| n > 0);
+    let reader = response.body_mut().with_config().limit(MAX_BYTES).reader();
+    let bytes = read_counting(reader, total, &busy)
+        .map_err(|e| io::Error::new(e.kind(), format!("{url}: {e}")))?;
     Ok(crate::lossy(bytes))
+}
+
+/// Everything `reader` gives, reporting the share of `total` bytes read.
+fn read_counting(mut reader: impl Read, total: Option<u64>, busy: &Busy) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    let mut chunk = [0; 16 << 10];
+    loop {
+        let n = match reader.read(&mut chunk) {
+            Ok(0) => return Ok(bytes),
+            Ok(n) => n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        bytes.extend_from_slice(&chunk[..n]);
+        if let Some(total) = total {
+            busy.progress(percent(bytes.len() as u64, total));
+        }
+    }
+}
+
+/// `done` of `total` in whole percent, at most 100 (a server may send more
+/// than it said).
+fn percent(done: u64, total: u64) -> u8 {
+    u8::try_from(done.saturating_mul(100) / total.max(1))
+        .unwrap_or(100)
+        .min(100)
 }
 
 /// A web page rather than a file: rendered as Markdown it would be a wall
@@ -92,6 +118,14 @@ fn is_page(content_type: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn percent_should_round_down_and_stop_at_100() {
+        assert_eq!(percent(1, 3), 33);
+        assert_eq!(percent(3, 3), 100);
+        assert_eq!(percent(5, 3), 100);
+        assert_eq!(percent(1, 0), 100);
+    }
 
     #[test]
     fn raw_url_should_turn_github_file_pages_into_raw_files() {
