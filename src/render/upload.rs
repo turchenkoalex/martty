@@ -1,16 +1,18 @@
 //! Images whose upload waits until they are about to be seen. Layout only
 //! sizes them (their placeholder rows are ordinary lines either way);
 //! rasterizing, compressing and base64 happen when the pager comes near
-//! them, or all at once for printing, spread over the CPU's cores.
+//! them, or all at once for printing, spread over the CPU's cores, with the
+//! share done on the terminal's activity indicator.
 
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::thread;
 
 use crate::kitty::Transmit;
 use crate::panics;
+use crate::progress::{self, Busy};
 
 /// Makes an image's upload; `None` when it can't be drawn after all (its
 /// rows then stay empty).
@@ -26,12 +28,29 @@ pub struct Upload {
 /// The uploads of `jobs` in order, each as kitty commands for its id. A job
 /// that panics (a decoder choking on a broken file) uploads nothing.
 pub fn run(jobs: Vec<(u32, Job)>) -> String {
+    if jobs.is_empty() {
+        return String::new();
+    }
+    let busy = Busy::start(&match jobs.len() {
+        1 => "Drawing an image".to_owned(),
+        n => format!("Drawing {n} images"),
+    });
+    let total = jobs.len() as u64;
+    let finished = AtomicU64::new(0);
+    let run_counted = |job: Job| {
+        let transmit = panics::catch(job);
+        busy.progress(progress::percent(
+            finished.fetch_add(1, Ordering::Relaxed) + 1,
+            total,
+        ));
+        transmit
+    };
     let threads = thread::available_parallelism()
         .map_or(1, usize::from)
         .min(jobs.len());
     let results: Vec<(u32, Option<Arc<Transmit>>)> = if threads <= 1 {
         jobs.into_iter()
-            .map(|(id, job)| (id, panics::catch(job)))
+            .map(|(id, job)| (id, run_counted(job)))
             .collect()
     } else {
         let ids: Vec<u32> = jobs.iter().map(|(id, _)| *id).collect();
@@ -50,7 +69,7 @@ pub fn run(jobs: Vec<(u32, Job)>) -> String {
                         let Some(slot) = jobs.get(i) else { break };
                         let job = slot.lock().ok().and_then(|mut j| j.take());
                         if let (Some(job), Ok(mut out)) = (job, done[i].lock()) {
-                            *out = panics::catch(job);
+                            *out = run_counted(job);
                         }
                     }
                 });

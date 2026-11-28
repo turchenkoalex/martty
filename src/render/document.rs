@@ -159,13 +159,6 @@ impl Document {
         upload::run(now.into_iter().map(|u| (u.id, u.job)).collect())
     }
 
-    /// Whether some image is still to be uploaded for `lines`.
-    pub fn has_uploads(&self, lines: Range<usize>) -> bool {
-        self.uploads
-            .iter()
-            .any(|u| u.lines.start < lines.end && lines.start < u.lines.end)
-    }
-
     /// Widest horizontal pan any line allows.
     pub fn max_pan(&self) -> u32 {
         self.lines.iter().map(Line::overflow).max().unwrap_or(0)

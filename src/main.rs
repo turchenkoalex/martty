@@ -201,8 +201,11 @@ fn lay_out(markdown: &str, config: &Config, source: bool) -> Document {
 }
 
 fn print(doc: Document) -> io::Result<()> {
+    // Drawn before stdout is locked: the activity indicator writes to it
+    // from the threads that draw the images.
+    let text = doc.into_ansi();
     let mut stdout = io::stdout().lock();
-    stdout.write_all(doc.into_ansi().as_bytes())?;
+    stdout.write_all(text.as_bytes())?;
     stdout.flush()
 }
 

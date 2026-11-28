@@ -289,12 +289,7 @@ impl<'a> Pager<'a> {
         let rows = self.view_rows();
         let view = self.view_mut();
         let near = view.top.saturating_sub(rows)..view.top.saturating_add(2 * rows);
-        let mut frame = if view.doc.has_uploads(near.clone()) {
-            let _busy = progress::Busy::start("Drawing images");
-            view.doc.take_uploads(near)
-        } else {
-            String::new()
-        };
+        let mut frame = view.doc.take_uploads(near);
         let title = tab_title(&self.title_of(self.views.len() - 1));
         if self.tab_title.as_ref() != Some(&title) {
             frame.push_str(&format!("\x1b]2;{title}\x1b\\"));
