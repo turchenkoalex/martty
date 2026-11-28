@@ -7,21 +7,25 @@
 //! its message and, when known, its percentage. When that one ends, the one
 //! around it shows again.
 //!
-//! Reports are written to stdout under this module's lock, from whichever
-//! thread changes the state: the timer, or a worker reporting its share. So
-//! no code may hold stdout's lock (`io::stdout().lock()`) across work that
-//! reports progress, such as `Document::into_ansi` or a layout: the worker
-//! would wait for stdout and the holder for the worker, for ever. Build the
-//! text first, then lock stdout only to write it.
+//! Reports are queued under this module's lock, so they keep the order of
+//! the changes, and one writer thread puts them on stdout. Only that thread
+//! ever waits for stdout: a worker reporting its share while some code holds
+//! stdout's lock across the work goes on, where writing itself it would
+//! wait for the holder, which waits for the worker, for ever. Each report is
+//! one locked write, so it can't land inside another escape sequence.
+//! `flush` lets the queue drain before martty exits.
 
 use std::io::{self, IsTerminal, Write};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::mpsc::{self, Sender};
+use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 use std::thread;
 use std::time::Duration;
 
 use crate::terminal::{self, Status, Terminal};
 
 const DELAY: Duration = Duration::from_millis(150);
+/// How long `flush` waits for the writer, should stdout stay locked.
+const FLUSH_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// A stretch of work shown by the indicator while alive; dropping it ends it.
 pub struct Busy {
@@ -90,13 +94,10 @@ impl State {
         self.changes(term)
     }
 
-    /// Writes what changed. Called with the lock held, so reports reach
-    /// stdout in order.
+    /// Queues what changed. Called with the lock held, so reports keep the
+    /// order of the changes.
     fn update(&mut self) {
-        let report = self.changes(terminal::current());
-        if !report.is_empty() {
-            let _ = write(&report);
-        }
+        queue(self.changes(terminal::current()));
     }
 }
 
@@ -111,17 +112,13 @@ impl Busy {
         if state.tasks.is_empty() && state.shown.is_none() {
             state.episode += 1;
             let episode = state.episode;
-            // Nothing else writes to stdout while martty is busy, so the
-            // timer's report can't land inside another escape sequence.
             thread::spawn(move || {
                 thread::sleep(DELAY);
-                // Written under the lock: once released, a stretch may end
-                // and report idle, which this must not follow.
+                // Queued under the lock: once released, a stretch may end
+                // and queue idle, which this must not follow.
                 let mut state = lock();
                 let report = state.show(episode, terminal::current());
-                if !report.is_empty() {
-                    let _ = write(&report);
-                }
+                queue(report);
             });
         }
         let id = state.next_id;
@@ -150,8 +147,8 @@ impl Busy {
 }
 
 impl Drop for Busy {
-    /// Ends the stretch; the indicator is off, or back to the stretch
-    /// around it, before the caller draws.
+    /// Ends the stretch: the indicator goes off, or back to the stretch
+    /// around it.
     fn drop(&mut self) {
         if let Some(id) = self.id {
             let mut state = lock();
@@ -173,14 +170,52 @@ pub fn percent(done: u64, total: u64) -> u8 {
 pub fn report(status: Status<'_>) {
     if io::stdout().is_terminal() {
         let _ordered = lock();
-        let _ = write(&terminal::current().status(status));
+        queue(terminal::current().status(status));
     }
 }
 
-fn write(text: &str) -> io::Result<()> {
-    let mut out = io::stdout().lock();
-    out.write_all(text.as_bytes())?;
-    out.flush()
+/// Waits, a second at most, until every queued report is on stdout: the
+/// writer thread ends with the process.
+pub fn flush() {
+    let Some(writer) = WRITER.get() else {
+        return;
+    };
+    let (done, wait) = mpsc::channel();
+    if writer.send(Message::Flush(done)).is_ok() {
+        let _ = wait.recv_timeout(FLUSH_TIMEOUT);
+    }
+}
+
+enum Message {
+    Report(String),
+    Flush(Sender<()>),
+}
+
+static WRITER: OnceLock<Sender<Message>> = OnceLock::new();
+
+/// Hands `report` to the writer thread, started on first use.
+fn queue(report: String) {
+    if report.is_empty() {
+        return;
+    }
+    let writer = WRITER.get_or_init(|| {
+        let (writer, messages) = mpsc::channel();
+        thread::spawn(move || {
+            for message in messages {
+                match message {
+                    Message::Report(report) => {
+                        let mut out = io::stdout().lock();
+                        let _ = out.write_all(report.as_bytes()).and_then(|()| out.flush());
+                    }
+                    Message::Flush(done) => {
+                        let _ = done.send(());
+                    }
+                }
+            }
+        });
+        writer
+    });
+    let _ = writer.send(Message::Report(report));
 }
 
 #[cfg(test)]

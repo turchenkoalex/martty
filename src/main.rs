@@ -68,7 +68,7 @@ fn main() -> ExitCode {
         let message = panics::take_deferred().unwrap_or_else(|| "internal error".into());
         Err(io::Error::other(message))
     });
-    match result {
+    let code = match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
         Err(e) => {
@@ -76,7 +76,9 @@ fn main() -> ExitCode {
             eprintln!("martty: {e}");
             ExitCode::FAILURE
         }
-    }
+    };
+    progress::flush();
+    code
 }
 
 fn run() -> io::Result<()> {
@@ -201,8 +203,6 @@ fn lay_out(markdown: &str, config: &Config, source: bool) -> Document {
 }
 
 fn print(doc: Document) -> io::Result<()> {
-    // Drawn before stdout is locked: the activity indicator writes to it
-    // from the threads that draw the images.
     let text = doc.into_ansi();
     let mut stdout = io::stdout().lock();
     stdout.write_all(text.as_bytes())?;
