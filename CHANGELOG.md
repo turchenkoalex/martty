@@ -5,6 +5,8 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+## [0.1.11] - 2026-11-28
+
 ### New
 
 - **The tab shows the document's H1.** The tab title is now the first H1 and then the file name, as in `Getting started · README.md`, so several `README.md` open at once tell apart. A document without an H1, or whose H1 is just its file name, keeps the plain name.
@@ -143,6 +145,7 @@ The first release of martty, a Markdown viewer built for [Ghostty](https://ghost
 - **A `less`-style pager:** search with highlighted matches, a table of contents, marks, following links (relative `.md` files open in the pager), copying as plain text over OSC 52, following a file as you edit it (`-w`), live re-layout on resize.
 - **Fast on long documents:** images, diagrams and headings are drawn only as they come into view, on all cores, and kept for the session.
 
+[0.1.11]: https://github.com/turchenkoalex/martty/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/turchenkoalex/martty/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/turchenkoalex/martty/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/turchenkoalex/martty/compare/v0.1.7...v0.1.8

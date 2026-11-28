@@ -775,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "martty"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "fontdue",
  "gif",
