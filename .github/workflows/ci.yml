@@ -1,9 +1,12 @@
 name: CI
 
+# The site has no Rust in it: changes to it alone needn't wait for a build.
 on:
   push:
     branches: [main]
+    paths-ignore: [site/**]
   pull_request:
+    paths-ignore: [site/**]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
