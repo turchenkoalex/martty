@@ -5,6 +5,8 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+## [0.1.9] - 2026-11-28
+
 ### New
 
 - **Documents from the web.** Pass a URL instead of a file, and martty downloads the Markdown and shows it: `martty https://raw.githubusercontent.com/…/README.md`. A GitHub file page (`github.com/…/blob/…`) works too, and relative links in the document point back to the site. Its images load with `--remote`, as before.
@@ -119,6 +121,7 @@ The first release of martty, a Markdown viewer built for [Ghostty](https://ghost
 - **A `less`-style pager:** search with highlighted matches, a table of contents, marks, following links (relative `.md` files open in the pager), copying as plain text over OSC 52, following a file as you edit it (`-w`), live re-layout on resize.
 - **Fast on long documents:** images, diagrams and headings are drawn only as they come into view, on all cores, and kept for the session.
 
+[0.1.9]: https://github.com/turchenkoalex/martty/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/turchenkoalex/martty/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/turchenkoalex/martty/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/turchenkoalex/martty/compare/v0.1.5...v0.1.6
