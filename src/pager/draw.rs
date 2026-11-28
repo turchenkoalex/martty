@@ -6,6 +6,7 @@ use super::Pager;
 use super::links;
 use super::overlay::{List, Overlay};
 use super::view::Kind;
+use crate::kitty::PLACEHOLDER;
 use crate::render::visible_controls;
 
 impl Pager<'_> {
@@ -114,6 +115,26 @@ impl Pager<'_> {
         }
     }
 
+    /// The tab title for the view at `depth`: the document's first H1, then
+    /// its name, so tabs of several `README.md` tell apart. Rex cuts a long
+    /// title at the end, hence the H1 first.
+    pub(super) fn tab_name(&self, depth: usize) -> String {
+        let name = self.title_of(depth);
+        let h1 = self.views[depth]
+            .doc
+            .headings
+            .iter()
+            .find(|h| h.level == 1)
+            .map(|h| h.text.as_str());
+        match h1 {
+            // An inline formula is placeholder cells, unreadable off the screen.
+            Some(h1) if !h1.is_empty() && !h1.contains(PLACEHOLDER) && !names(h1, &name) => {
+                format!("{h1} · {name}")
+            }
+            _ => name,
+        }
+    }
+
     pub(super) fn status(&self) -> String {
         if let Some(input) = &self.prompt {
             return format!("/{input}");
@@ -192,4 +213,13 @@ pub(super) fn truncate(s: &str, cols: usize) -> String {
             used <= cols
         })
         .collect()
+}
+
+/// Whether `h1` only repeats the file `name`, as `# martty` does in
+/// `martty.md`.
+fn names(h1: &str, name: &str) -> bool {
+    let stem = std::path::Path::new(name)
+        .file_stem()
+        .map_or(name.into(), |s| s.to_string_lossy());
+    h1.eq_ignore_ascii_case(name) || h1.eq_ignore_ascii_case(&stem)
 }

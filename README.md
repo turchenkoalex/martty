@@ -242,7 +242,8 @@ The pager's `v` key opens the file in `$VISUAL`, or `$EDITOR`, run through `sh` 
 does, so the variable may hold arguments, as in `EDITOR="zed --wait"`.
 
 The pager names the tab after the file it shows (OSC 2), including a file opened from a
-link, and hands the title back when it exits. It also asks Ghostty to report theme switches (DEC 2031) and reads keys with the
+link, with the document's first H1 before the name (`Getting started · README.md`), and
+hands the title back when it exits. It also asks Ghostty to report theme switches (DEC 2031) and reads keys with the
 kitty keyboard protocol, so Esc and Alt combinations are never confused. Slow layouts,
 such as documents with many diagrams, and downloads show Ghostty's progress indicator
 (OSC 9;4), with the share downloaded when the server sends the file's size. In Rex they report through its Program Status Protocol (OSC 7501) instead: the

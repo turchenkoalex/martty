@@ -5,6 +5,10 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+### New
+
+- **The tab shows the document's H1.** The tab title is now the first H1 and then the file name, as in `Getting started · README.md`, so several `README.md` open at once tell apart. A document without an H1, or whose H1 is just its file name, keeps the plain name.
+
 ### Fixed
 
 - **A link selected with `Tab` is highlighted whole during a search.** When the link held a word found by `/`, only that word stayed reversed; now the whole link is.

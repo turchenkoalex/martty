@@ -293,7 +293,7 @@ impl<'a> Pager<'a> {
         let view = self.view_mut();
         let near = view.top.saturating_sub(rows)..view.top.saturating_add(2 * rows);
         let mut frame = view.doc.take_uploads(near);
-        let title = tab_title(&self.title_of(self.views.len() - 1));
+        let title = tab_title(&self.tab_name(self.views.len() - 1));
         if self.tab_title.as_ref() != Some(&title) {
             frame.push_str(&format!("\x1b]2;{title}\x1b\\"));
             self.tab_title = Some(title);

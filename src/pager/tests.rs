@@ -501,6 +501,27 @@ fn tab_title_should_drop_control_characters() {
     assert_eq!(super::tab_title(&"x".repeat(500)).len(), 100);
 }
 
+#[test]
+fn tab_name_should_put_the_first_h1_before_the_name() {
+    let titled = |headings: &[(u8, &str)]| {
+        let mut doc = text_doc(&["x"]);
+        for &(level, text) in headings {
+            doc.headings.push(crate::render::Heading {
+                level,
+                ..heading(0, text)
+            });
+        }
+        pager_with(doc, 5).tab_name(0)
+    };
+    assert_eq!(
+        titled(&[(2, "Intro"), (1, "Guide"), (1, "More")]),
+        "Guide · t"
+    );
+    assert_eq!(titled(&[(2, "Intro")]), "t");
+    assert_eq!(titled(&[(1, "T")]), "t", "an H1 that repeats the name");
+    assert_eq!(titled(&[(1, "x \u{10EEEE}")]), "t", "an inline formula");
+}
+
 /// A pager whose document led through links to `a.md`, `b.md` and `c.md`.
 fn deep_pager(cols: usize) -> Pager<'static> {
     let mut p = pager(40, 11);
