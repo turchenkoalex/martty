@@ -113,7 +113,7 @@ nav { display: flex; align-items: center; justify-content: space-between; paddin
 .icon-btn svg { width: 18px; height: 18px; }
 @media (max-width: 560px) { .nav-links .hide-sm { display: none; } }
 
-main { max-width: 760px; padding: 48px 0 0; }
+main { max-width: 760px; margin: 0 auto; padding: 48px 0 0; }
 .kicker { font: 600 13px/1 "JetBrains Mono", monospace; color: var(--accent); text-transform: uppercase; letter-spacing: .12em; }
 h1 { font: 800 clamp(32px, 5vw, 52px)/1.1 "JetBrains Mono", monospace; letter-spacing: -.04em; margin: 14px 0; }
 .sub { color: var(--muted); font-size: 17px; margin: 0 0 24px; }
@@ -133,7 +133,7 @@ h1 { font: 800 clamp(32px, 5vw, 52px)/1.1 "JetBrains Mono", monospace; letter-sp
 .release li::marker { color: var(--muted); }
 .release li ul { margin-top: 6px; }
 .release a:not(h2 a) { color: var(--accent-2); text-underline-offset: 2px; }
-main code { font-size: .88em; background: var(--bg-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+main code { overflow-wrap: anywhere; font-size: .88em; background: var(--bg-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
 .release pre { background: var(--bg-2); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 14px; }
 .release pre code { background: none; border: 0; padding: 0; }
 
