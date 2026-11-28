@@ -51,7 +51,7 @@ impl Terminal for Rex {
 /// Base64 of one line: the protocol refuses a whole report whose message
 /// holds a control character, and file names and errors may.
 fn encode(msg: &str) -> String {
-    let line: String = msg
+    let line: String = super::redact_urls(msg)
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })
         .take(MAX_MESSAGE_CHARS)
