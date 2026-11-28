@@ -101,6 +101,19 @@ impl Pager<'_> {
         Some(format!(" {first}-{last}/{total}  {pct}% "))
     }
 
+    /// The name of what the view at `depth` shows: a file name, or the
+    /// document's title.
+    pub(super) fn title_of(&self, depth: usize) -> String {
+        match &self.views[depth].kind {
+            Kind::File(path) => path.file_name().map_or_else(
+                || path.display().to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            ),
+            Kind::Remote { url, .. } => crate::web::title(url),
+            Kind::Document | Kind::Diagram(_) => self.title.to_owned(),
+        }
+    }
+
     pub(super) fn status(&self) -> String {
         if let Some(input) = &self.prompt {
             return format!("/{input}");
@@ -152,14 +165,7 @@ impl Pager<'_> {
         if let Some(link) = view.selected.and_then(|i| view.links.get(i)) {
             return format!(" → {}  · Enter open · Tab next · Esc cancel", link.url);
         }
-        let title = match &view.kind {
-            Kind::File(path) => path.file_name().map_or_else(
-                || path.display().to_string(),
-                |n| n.to_string_lossy().into_owned(),
-            ),
-            Kind::Remote { url, .. } => crate::web::title(url),
-            _ => self.title.to_owned(),
-        };
+        let title = self.title_of(self.views.len() - 1);
         let back = if self.views.len() > 1 {
             " · ⌫ back"
         } else {

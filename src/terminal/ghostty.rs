@@ -35,9 +35,10 @@ impl Terminal for Ghostty {
             Status::Working { progress: None, .. } => "\x1b]9;4;3\x1b\\".into(),
             // OSC 9;4 state 0: remove the indicator.
             Status::Idle => "\x1b]9;4;0\x1b\\".into(),
-            // The error state would stay on the tab over the shell prompt,
-            // with no message; stderr already says what went wrong.
-            Status::Failed(_) => String::new(),
+            // Ghostty has no state for news. The error state would stay on
+            // the tab over the shell prompt, with no message; stderr already
+            // says what went wrong.
+            Status::Done(_) | Status::Failed(_) => String::new(),
         }
     }
 }
@@ -86,6 +87,7 @@ mod tests {
         assert_eq!(Ghostty.status(working(None)), "\x1b]9;4;3\x1b\\");
         assert_eq!(Ghostty.status(working(Some(40))), "\x1b]9;4;1;40\x1b\\");
         assert_eq!(Ghostty.status(Status::Idle), "\x1b]9;4;0\x1b\\");
+        assert_eq!(Ghostty.status(Status::Done("x")), "");
         assert_eq!(Ghostty.status(Status::Failed("x")), "");
     }
 }

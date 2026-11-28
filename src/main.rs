@@ -72,7 +72,7 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
         Err(e) => {
-            progress::failed(&format!("martty: {e}"));
+            progress::report(terminal::Status::Failed(&format!("martty: {e}")));
             eprintln!("martty: {e}");
             ExitCode::FAILURE
         }

@@ -18,6 +18,8 @@ pub enum Status<'a> {
     Working { what: &'a str, progress: Option<u8> },
     /// The work is over; martty shows the result or waits for keys.
     Idle,
+    /// Something new to look at, such as a followed file that changed.
+    Done(&'a str),
     /// martty stopped on this error.
     Failed(&'a str),
 }

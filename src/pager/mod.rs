@@ -54,6 +54,7 @@ use std::time::SystemTime;
 
 use crate::render::{self, Document};
 use crate::term::{self, RawMode, Size, Theme};
+use crate::terminal::Status;
 use crate::{kitty, panics, progress, remote, web};
 
 use keys::read_keys;
@@ -179,12 +180,14 @@ pub fn run(
             keys = later;
             continue;
         }
-        if pager.reload_changed(&mut render)? {
-            dirty = true;
-        }
-        if dirty {
+        let updated = pager.reload_changed(&mut render)?;
+        if dirty || updated.is_some() {
             pager.redraw()?;
             dirty = false;
+        }
+        // After the redraw, whose image uploads would report idle over it.
+        if let Some(name) = updated {
+            progress::report(Status::Done(&format!("{name} changed")));
         }
         keys = match read_keys(&mut tty, &mut carry)? {
             Some(keys) => keys,
@@ -395,23 +398,23 @@ impl<'a> Pager<'a> {
     }
 
     /// Lays out again the views whose file changed, when following.
-    /// Returns whether any did.
+    /// Returns the name of the topmost one that did.
     fn reload_changed(
         &mut self,
         render: &mut impl FnMut(Layout<'_>, Params) -> Document,
-    ) -> io::Result<bool> {
+    ) -> io::Result<Option<String>> {
         if !self.follow {
-            return Ok(false);
+            return Ok(None);
         }
-        let mut changed = false;
+        let mut changed = None;
         for depth in 0..self.views.len() {
             let time = self.path(depth).and_then(modified);
             if time.is_some() && time != self.views[depth].modified {
                 self.relayout(depth, render)?;
-                changed = true;
+                changed = Some(self.title_of(depth));
             }
         }
-        if changed {
+        if changed.is_some() {
             self.refresh_hits();
         }
         Ok(changed)

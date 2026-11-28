@@ -82,10 +82,11 @@ impl Drop for Busy {
     }
 }
 
-/// Tells the terminal that martty stopped on `error`, right before it exits.
-pub fn failed(error: &str) {
+/// Tells the terminal what happened outside any busy stretch: news to look
+/// at, or the error martty stops on.
+pub fn report(status: Status<'_>) {
     if io::stdout().is_terminal() {
-        let _ = write(&terminal::current().status(Status::Failed(error)));
+        let _ = write(&terminal::current().status(status));
     }
 }
 

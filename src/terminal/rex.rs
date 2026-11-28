@@ -30,7 +30,7 @@ impl Terminal for Rex {
 
     /// Reports go to the root record; each replaces it whole, so every one
     /// carries `app`. `working` is dropped by Rex when martty exits, while
-    /// `error` stays for the user to find.
+    /// `done` and `error` stay, marking the tab until the user looks.
     fn status(&self, status: Status<'_>) -> String {
         let body = match status {
             Status::Working { what, progress } => {
@@ -41,6 +41,7 @@ impl Terminal for Rex {
                 body
             }
             Status::Idle => "state=idle:app=martty".to_owned(),
+            Status::Done(msg) => format!("state=done:app=martty:msg={}", encode(msg)),
             Status::Failed(msg) => format!("state=error:app=martty:msg={}", encode(msg)),
         };
         format!("\x1b]7501;{body}\x1b\\")
@@ -79,6 +80,10 @@ mod tests {
         assert_eq!(
             Rex.status(Status::Idle),
             "\x1b]7501;state=idle:app=martty\x1b\\"
+        );
+        assert_eq!(
+            Rex.status(Status::Done("Hi")),
+            "\x1b]7501;state=done:app=martty:msg=SGk=\x1b\\"
         );
     }
 

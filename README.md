@@ -245,7 +245,8 @@ kitty keyboard protocol, so Esc and Alt combinations are never confused. Slow la
 such as documents with many diagrams, and downloads show Ghostty's progress indicator
 (OSC 9;4), with the share downloaded when the server sends the file's size. In Rex they report through its Program Status Protocol (OSC 7501) instead: the
 tab shows a spinner with what martty is doing, and an error martty exits with stays on the
-tab until you look.
+tab until you look. With `-w` (or `F`), a change to the file marks the tab as done, so a
+document something else is writing tells you when it has news.
 
 When graphics are not available, martty falls back to plain styled text: diagrams and
 formulas show up as code and images as their alt text.
