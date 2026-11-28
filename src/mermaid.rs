@@ -382,6 +382,26 @@ mod tests {
     }
 
     #[test]
+    fn layout_should_draw_every_diagram_type() {
+        let sources = [
+            "sankey-beta\nA,B,10\nA,C,5",
+            "mindmap\n  root\n    a\n    b",
+            "architecture-beta\n  service db(database)[DB]\n  service api(server)[API]\n  db:L -- R:api",
+            "block-beta\n  a b c",
+            "packet-beta\n  0-15: \"Source\"\n  16-31: \"Dest\"",
+            "kanban\n  todo\n    task1",
+            "radar-beta\n  axis a, b, c\n  curve x{1, 2, 3}",
+            "treemap-beta\n\"A\"\n  \"B\": 10\n  \"C\": 20",
+            "C4Context\n  Person(u, \"User\")",
+            "---\nconfig:\n  layout: elk\n---\nflowchart LR\n  A --> B",
+        ];
+        for s in sources {
+            let d = layout(s, &PALETTE, (10, 20), (80, 20), 1.0, 1.0);
+            assert!(d.is_ok(), "{s}: {:?}", d.err());
+        }
+    }
+
+    #[test]
     fn prefetch_should_leave_trees_for_layout() {
         let sources = [
             "graph LR\n P1 --> Q",

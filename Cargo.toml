@@ -11,7 +11,7 @@ gif = "0.14.1"
 image-webp = "0.2.4"
 latex-rust = "3.0.3"
 libc = "0.2.191"
-merman = { version = "0.11.0", default-features = false, features = ["svg", "diagram-flowchart", "diagram-sequence", "diagram-class", "diagram-state", "diagram-er", "diagram-pie", "diagram-gantt", "diagram-journey", "diagram-git-graph", "diagram-timeline", "diagram-xychart", "diagram-quadrant-chart", "diagram-requirement"] }
+merman = { version = "0.11.0", default-features = false, features = ["svg", "all-diagrams", "layout-cytoscape", "layout-elk"] }
 miniz_oxide = "0.9.1"
 pulldown-cmark = { version = "0.13.6", default-features = false }
 resvg = { version = "0.50.0", default-features = false, features = ["text", "system-fonts", "raster-images"] }

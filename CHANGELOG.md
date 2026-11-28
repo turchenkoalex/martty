@@ -5,6 +5,10 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+### Fixed
+
+- **Every Mermaid diagram type is drawn.** Sankey, mindmap, architecture, block, packet, kanban, radar, treemap, C4 and the other types Mermaid knows used to show `invalid mermaid: Unsupported diagram type`; `layout: elk` in a diagram's config works too.
+
 ## [0.1.12] - 2026-11-28
 
 ### Changed
