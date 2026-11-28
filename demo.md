@@ -182,6 +182,12 @@ const greet = async (user: User): Promise<string> =>
   `hello, ${user.name}!`;
 ```
 
+```kotlin
+data class User(val id: Int, val name: String)
+
+fun greet(user: User): String = "hello, ${user.name}!"
+```
+
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail

@@ -321,7 +321,9 @@ cargo fmt
 - [merman](https://github.com/Latias94/merman) and
   [resvg](https://github.com/linebender/resvg) for diagrams
 - [fontdue](https://github.com/mooman219/fontdue) for glyph rasterization
-- [syntect](https://github.com/trishume/syntect) for syntax highlighting
+- [syntect](https://github.com/trishume/syntect) for syntax highlighting, with the grammars
+  [bat](https://github.com/sharkdp/bat) collects, packaged by
+  [two-face](https://codeberg.org/CosmicHarper/two-face)
 - [latex-rust](https://github.com/jscarr64/latex-rust) for typesetting math, with the
   [STIX Two Math](https://github.com/stipub/stixfonts) font it bundles under the SIL Open
   Font License

@@ -1,4 +1,5 @@
-//! Syntax highlighting with syntect's bundled grammars. Token scopes map to
+//! Syntax highlighting with bat's grammars (via two-face), a superset of
+//! syntect's bundled ones that adds Kotlin, TypeScript, TOML and more. Token scopes map to
 //! palette colors, so code follows the terminal theme rather than a
 //! highlighting theme.
 
@@ -15,7 +16,7 @@ use crate::style::{Color, Style};
 /// use (about 1 ms with Oniguruma).
 fn syntaxes() -> &'static SyntaxSet {
     static SET: OnceLock<SyntaxSet> = OnceLock::new();
-    SET.get_or_init(SyntaxSet::load_defaults_newlines)
+    SET.get_or_init(two_face::syntax::extra_newlines)
 }
 
 /// Scope prefixes, their palette color and whether they are italic; the
@@ -104,7 +105,8 @@ fn spans(lang: &str, text: &str) -> Option<Vec<Vec<Span>>> {
 /// closest one they do.
 fn alias(lang: &str) -> &str {
     match lang.to_ascii_lowercase().as_str() {
-        "typescript" | "ts" | "tsx" | "jsx" | "mjs" | "cjs" => "js",
+        "mjs" | "cjs" => "js",
+        "kt" | "kts" => "kotlin",
         "shell" | "zsh" | "console" | "shell-session" => "bash",
         "golang" => "go",
         _ => lang,
@@ -148,8 +150,33 @@ mod tests {
     }
 
     #[test]
-    fn highlight_should_map_typescript_to_javascript() {
-        assert!(highlight("ts", "const x = 1;").is_some());
+    fn highlight_should_know_common_fence_names() {
+        for lang in [
+            "kotlin",
+            "kt",
+            "kts",
+            "ts",
+            "typescript",
+            "tsx",
+            "jsx",
+            "mjs",
+            "toml",
+            "swift",
+            "dockerfile",
+            "shell",
+            "console",
+            "golang",
+        ] {
+            assert!(highlight(lang, "x").is_some(), "{lang}");
+        }
+    }
+
+    #[test]
+    fn highlight_should_color_kotlin() {
+        let spans = colors("kotlin", "fun main() { val x = 42 }");
+        let color_of = |text: &str| spans.iter().find(|(t, _)| t == text).and_then(|(_, c)| *c);
+        assert_eq!(color_of("fun"), Some(Color::Ansi(5)));
+        assert_eq!(color_of("42"), Some(Color::Ansi(3)));
     }
 
     #[test]

@@ -5,6 +5,10 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+### Added
+
+- **Kotlin, Swift, Dockerfile and more languages are highlighted.** Code blocks use bat's grammars, so `kotlin` (`kt`, `kts`) and the other languages bat knows are colored; TypeScript, TSX and JSX get their own grammar instead of JavaScript's.
+
 ### Fixed
 
 - **Every Mermaid diagram type is drawn.** Sankey, mindmap, architecture, block, packet, kanban, radar, treemap, C4 and the other types Mermaid knows used to show `invalid mermaid: Unsupported diagram type`; `layout: elk` in a diagram's config works too.

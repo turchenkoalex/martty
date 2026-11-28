@@ -802,6 +802,7 @@ dependencies = [
  "resvg",
  "serde_json",
  "syntect",
+ "two-face",
  "unicode-width",
  "ureq",
  "zune-jpeg",
@@ -1833,6 +1834,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 dependencies = [
  "core_maths",
+]
+
+[[package]]
+name = "two-face"
+version = "0.5.3+bat-0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8476eba391d01c32d3ef40325aa305a890d797aa57d906d14ac632479ceb22b5"
+dependencies = [
+ "serde",
+ "serde_derive",
+ "syntect",
 ]
 
 [[package]]
