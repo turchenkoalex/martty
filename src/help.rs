@@ -45,14 +45,15 @@ pub const KEYS: &[(&str, &[(&str, &str)])] = &[
     ),
     (
         "Copying",
-        &[
-            ("y", "copy the code block on screen"),
-            ("c C", "copy the screen / document as plain text"),
-        ],
+        &[(
+            "y c C",
+            "copy the code on screen / the screen / the document",
+        )],
     ),
     (
         "Other",
         &[
+            ("s", "show the Markdown source / the rendered document"),
             ("v", "edit the file in $VISUAL or $EDITOR"),
             ("F", "follow changes to the file"),
             ("q", "quit"),

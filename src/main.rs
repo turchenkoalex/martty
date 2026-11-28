@@ -111,6 +111,7 @@ fn run() -> io::Result<()> {
             zoom,
             overflow,
             mut theme,
+            ..
         } = params;
         if !color {
             theme.bg = None;
@@ -136,7 +137,7 @@ fn run() -> io::Result<()> {
                 if let Some(text) = file.and_then(|f| read_text(f).ok()) {
                     input.markdown = text;
                 }
-                render::render(&input.markdown, &config)
+                lay_out(&input.markdown, &config, params.source)
             }
             Layout::File(path) => {
                 // A link may point at a file that can't be read; say so in
@@ -145,10 +146,11 @@ fn run() -> io::Result<()> {
                     format!("> [!CAUTION]\n> Can't read `{}`: {e}\n", path.display())
                 });
                 let dir = path.parent().unwrap_or(Path::new("."));
-                render::render(&markdown, &layout_config(dir, None, false))
+                lay_out(&markdown, &layout_config(dir, None, false), params.source)
             }
             Layout::Remote { url, markdown } => {
-                render::render(markdown, &layout_config(Path::new("."), Some(url), false))
+                let config = layout_config(Path::new("."), Some(url), false);
+                lay_out(markdown, &config, params.source)
             }
             Layout::Diagram(source) => {
                 let config = layout_config(&input.base_dir, None, true);
@@ -166,13 +168,7 @@ fn run() -> io::Result<()> {
     // Taken before the file is read for layout, so an edit saved meanwhile
     // still counts as a change when following.
     let modified = file.and_then(|f| std::fs::metadata(f).and_then(|m| m.modified()).ok());
-    let params = Params {
-        size,
-        zoom: 1.0,
-        overflow: false,
-        theme: caps.theme,
-    };
-    let doc = render(Layout::Document, params);
+    let doc = render(Layout::Document, Params::new(size, caps.theme));
     let page = io::stdout().is_terminal()
         && match args.paging {
             _ if args.follow => true,
@@ -191,6 +187,15 @@ fn run() -> io::Result<()> {
         return pager::run(&options, doc, &pending_input, render);
     }
     print(doc)
+}
+
+/// The rendered document, or its Markdown source (`s` in the pager).
+fn lay_out(markdown: &str, config: &Config, source: bool) -> Document {
+    if source {
+        render::source(markdown, config)
+    } else {
+        render::render(markdown, config)
+    }
 }
 
 fn print(doc: Document) -> io::Result<()> {

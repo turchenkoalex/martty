@@ -11,6 +11,10 @@
 //! `h`/`l` by redrawing their placeholder rows from a later image column —
 //! the image itself is not re-sent.
 //!
+//! `s` switches a view between the rendered document and its Markdown
+//! source; both are laid out with the same heading anchors, so the place is
+//! kept as on any relayout.
+//!
 //! `v` leaves the alternate screen for the user's editor and lays the
 //! views out again when it exits.
 //!
@@ -78,6 +82,21 @@ pub struct Params {
     pub overflow: bool,
     /// The terminal's colors, updated when its theme changes.
     pub theme: Theme,
+    /// The Markdown source instead of the rendered document (`s`).
+    pub source: bool,
+}
+
+impl Params {
+    /// How a document is first laid out: rendered, wrapped, at zoom 1.
+    pub fn new(size: Size, theme: Theme) -> Self {
+        Self {
+            size,
+            zoom: 1.0,
+            overflow: false,
+            theme,
+            source: false,
+        }
+    }
 }
 
 /// What the pager shows and how it starts.
@@ -360,10 +379,9 @@ impl<'a> Pager<'a> {
 
     fn params(&self, zoom: f32) -> Params {
         Params {
-            size: self.size,
             zoom,
             overflow: self.overflow,
-            theme: self.theme,
+            ..Params::new(self.size, self.theme)
         }
     }
 
@@ -474,7 +492,10 @@ impl<'a> Pager<'a> {
         render: &mut impl FnMut(Layout<'_>, Params) -> Document,
     ) -> io::Result<()> {
         let rows = self.view_rows();
-        let params = self.params(self.views[depth].zoom);
+        let params = Params {
+            source: self.views[depth].source,
+            ..self.params(self.views[depth].zoom)
+        };
         // Before the file is read, so a save during the layout is seen.
         let time = self.path(depth).and_then(modified);
         let old = &self.views[depth];
@@ -485,6 +506,7 @@ impl<'a> Pager<'a> {
 
         let mut view = View::new(doc, old.kind.clone());
         view.zoom = old.zoom;
+        view.source = old.source;
         view.diagram = old.diagram;
         view.top = view
             .follow_line(old, old.top)

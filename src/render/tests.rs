@@ -7,7 +7,7 @@ fn render(md: &str, cfg: &Config) -> String {
     super::render(md, cfg).into_ansi()
 }
 
-fn strip_ansi(s: &str) -> String {
+pub(super) fn strip_ansi(s: &str) -> String {
     let mut out = String::new();
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
@@ -37,7 +37,7 @@ fn strip_ansi(s: &str) -> String {
 }
 
 /// Text only, 40 columns: no images, no code background.
-fn plain_config() -> Config {
+pub(super) fn plain_config() -> Config {
     Config {
         width: 40,
         color: true,

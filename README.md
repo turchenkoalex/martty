@@ -209,6 +209,7 @@ The pager follows `less` conventions. `?` shows the keys in the pager.
 | `c` / `C` | Copy the screen / the whole document as plain text |
 | `m` *letter* | Set a mark |
 | `'` *letter* / `''` | Go to a mark / back to where the last jump started |
+| `s` | Switch between the rendered document and its Markdown source, highlighted and with line numbers, keeping your place. Search, headings, the table of contents and copying work in both; `w` pans long source lines instead of wrapping them |
 | `v` | Edit the file in `$VISUAL` or `$EDITOR` (`vi` when neither is set), then come back to the pager with your edits laid out. Vim, Neovim, Nano, Micro, Helix, Emacs, Zed, Sublime Text, VS Code and Cursor open at the section on screen |
 | `F` | Follow changes to the file, as `-w` does |
 | `?` | Show the keys |

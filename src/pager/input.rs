@@ -109,6 +109,17 @@ impl Pager<'_> {
                 });
                 Action::Reflow
             }
+            Key::Char('s') if !fullscreen => {
+                let view = self.view_mut();
+                view.source = !view.source;
+                view.selected = None;
+                self.message = Some(if view.source {
+                    "Markdown source: s shows the document again".into()
+                } else {
+                    "Rendered document".into()
+                });
+                Action::Relayout
+            }
             // `v` edits the file, as in less.
             Key::Char('v') => Action::Edit,
             Key::Char('y') => self.copy_code().map_or(Action::Continue, Action::Copy),

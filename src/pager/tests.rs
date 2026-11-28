@@ -459,3 +459,19 @@ fn arrows_should_switch_diagrams_and_scroll_document_to_them() {
     let top = p.view().top;
     assert!((top..top + 10).contains(&40), "top {top}");
 }
+
+#[test]
+fn s_should_lay_the_view_out_as_source_and_back() {
+    let mut p = pager(40, 11);
+    let mut seen = Vec::new();
+    let mut render = |_: Layout<'_>, params: Params| {
+        seen.push(params.source);
+        text_doc(&["x"; 40])
+    };
+    p.apply(Key::Char('s'), &mut render).ok();
+    assert!(p.view().source);
+    assert!(p.status().contains("source"), "{}", p.status());
+    p.apply(Key::Char('s'), &mut render).ok();
+    assert!(!p.view().source);
+    assert_eq!(seen, [true, false]);
+}

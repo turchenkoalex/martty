@@ -59,6 +59,8 @@ pub(super) struct View {
     /// For a full-screen diagram: its index in the `diagrams` of the view
     /// below, for switching to its neighbours.
     pub(super) diagram: Option<usize>,
+    /// Shows the Markdown source rather than the rendered document (`s`).
+    pub(super) source: bool,
 }
 
 impl View {
@@ -77,6 +79,7 @@ impl View {
             current_hit: None,
             modified: None,
             diagram: None,
+            source: false,
         }
     }
 

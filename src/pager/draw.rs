@@ -128,6 +128,9 @@ impl Pager<'_> {
         if let Some(counter) = self.hit_counter() {
             let _ = write!(extra, "  {counter}");
         }
+        if view.source {
+            extra.push_str("  source");
+        }
         if self.follow {
             extra.push_str("  following");
         }

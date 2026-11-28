@@ -5,6 +5,10 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+### New
+
+- **The Markdown source in the pager.** `s` shows the document as the Markdown it was written in, highlighted and with line numbers, and `s` again goes back to the rendered view at the same place. Search, `[`/`]`, the table of contents, copying and `-w` work there too.
+
 ## [0.1.9] - 2026-11-28
 
 ### New

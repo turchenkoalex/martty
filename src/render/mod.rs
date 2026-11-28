@@ -15,6 +15,7 @@ mod layout;
 mod links;
 mod scan;
 mod slice;
+mod source;
 mod span;
 mod table;
 #[cfg(test)]
@@ -44,6 +45,7 @@ use inline::link_style;
 use layout::Container;
 pub use links::percent_decode;
 pub use scan::warm_up;
+pub use source::source;
 pub use span::visible_controls;
 use span::{Pen, Span};
 use table::Table;
