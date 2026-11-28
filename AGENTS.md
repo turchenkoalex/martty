@@ -10,9 +10,11 @@ user-facing behavior; keep it in sync when that behavior changes.
 
 **Ghostty and Rex are the only targets.** Use what Ghostty supports (kitty graphics with
 Unicode placeholders, OSC 8, synchronized output, theme color queries); Rex shares its
-terminal core, so the same escape sequences work there. The one difference is outside the
-terminal: the font for image headings comes from Ghostty's config or Rex's macOS defaults
-(`heading.rs`). Don't add workarounds for other terminals. When a capability is missing,
+terminal core, so the same escape sequences work there. What differs between the two lives
+in `terminal/`, behind the `Terminal` trait chosen once from `TERM_PROGRAM`: the font for
+image headings (Ghostty's config, Rex's macOS defaults) and how martty reports that it is
+busy (OSC 9;4 in Ghostty, OSC 7501 in Rex). Put anything else that differs there too, not
+in `if rex` branches elsewhere. Don't add workarounds for other terminals. When a capability is missing,
 fall back to plain styled text.
 
 ## Commands
@@ -63,8 +65,9 @@ src/
 ├── web.rs         # a Markdown document given as a URL; GitHub file pages read raw
 ├── mermaid.rs     # merman → SVG → resvg → kitty
 ├── math.rs        # LaTeX → latex-rust SVG → resvg → kitty
-├── heading.rs     # H1–H3 rasterized with fontdue in Ghostty's font or bundled JetBrains Mono
-├── progress.rs    # Ghostty's progress indicator (OSC 9;4) during slow layouts
+├── heading.rs     # H1–H3 rasterized with fontdue in the terminal's font or bundled JetBrains Mono
+├── progress.rs    # the terminal's activity indicator during slow layouts and downloads
+├── terminal/      # what differs between Ghostty and Rex: the font, activity reports
 ├── panics.rs      # panics in parsers of untrusted input caught; messages kept off the pager screen
 └── pager/         # alternate-screen pager
     ├── mod.rs     # `run` loop, view stack, relayout, following files, terminal enter/leave

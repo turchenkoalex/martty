@@ -61,6 +61,7 @@ pub fn fetch(url: &str) -> io::Result<String> {
         .user_agent(AutoHeaderValue::Provided(Arc::new("martty".to_owned())))
         .build();
     let agent = ureq::Agent::new_with_config(config);
+    let _busy = crate::progress::Busy::start(&format!("Downloading {}", title(url)));
     let mut response = agent.get(url).call().map_err(failed)?;
     let content_type = response
         .headers()

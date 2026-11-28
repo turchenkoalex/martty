@@ -7,6 +7,7 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ### New
 
+- **Activity in Rex.** While martty downloads a document or lays out a slow one, Rex shows a spinner on its tab with what it is doing, and an error martty exits with stays marked on the tab. In Ghostty the progress bar now shows during downloads too.
 - **The Markdown source in the pager.** `s` shows the document as the Markdown it was written in, highlighted and with line numbers, and `s` again goes back to the rendered view at the same place. Search, `[`/`]`, the table of contents, copying and `-w` work there too.
 
 ## [0.1.9] - 2026-11-28

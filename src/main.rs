@@ -26,6 +26,7 @@ mod remote;
 mod render;
 mod style;
 mod term;
+mod terminal;
 mod web;
 
 use std::io::{self, IsTerminal, Read, Write};
@@ -71,6 +72,7 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
         Err(e) => {
+            progress::failed(&format!("martty: {e}"));
             eprintln!("martty: {e}");
             ExitCode::FAILURE
         }
@@ -116,7 +118,7 @@ fn run() -> io::Result<()> {
         if !color {
             theme.bg = None;
         }
-        let _busy = progress::Busy::start();
+        let _busy = progress::Busy::start("Laying out Markdown");
         if let Some(width) = args.width {
             size.cols = width;
         }

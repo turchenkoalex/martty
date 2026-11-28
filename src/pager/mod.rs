@@ -275,7 +275,7 @@ impl<'a> Pager<'a> {
         let view = self.view_mut();
         let near = view.top.saturating_sub(rows)..view.top.saturating_add(2 * rows);
         let mut frame = if view.doc.has_uploads(near.clone()) {
-            let _busy = progress::Busy::start();
+            let _busy = progress::Busy::start("Drawing images");
             view.doc.take_uploads(near)
         } else {
             String::new()
