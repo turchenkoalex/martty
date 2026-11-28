@@ -8,6 +8,7 @@ What changed in each release of martty, newest first. The binaries are on the
 ### New
 
 - **Documents from the web.** Pass a URL instead of a file, and martty downloads the Markdown and shows it: `martty https://raw.githubusercontent.com/…/README.md`. A GitHub file page (`github.com/…/blob/…`) works too, and relative links in the document point back to the site. Its images load with `--remote`, as before.
+- **Links to Markdown files on the web open in the pager.** `Enter` on an `http(s)` link to a `.md` file, including a GitHub file page, downloads it and shows it in a new view; `⌫` goes back. Other web links still open in the browser.
 
 ## [0.1.8] - 2026-11-28
 

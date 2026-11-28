@@ -152,8 +152,8 @@ Markdown file's directory, or against the current directory when reading stdin.
 Instead of a file you can pass an `http://` or `https://` URL: martty downloads the
 document (30 s timeout, at most 16 MB) and shows it. A GitHub file page
 (`github.com/OWNER/REPO/blob/REF/PATH`) is read from `raw.githubusercontent.com`.
-Relative links and images in it resolve against the URL; its images still load only with
-`--remote`. `-w` works with files only.
+Relative links and images in it resolve against the URL, so links to other `.md` files
+open in the pager too; its images still load only with `--remote`. `-w` works with files only.
 
 Try the bundled demo to see everything at once:
 
@@ -200,7 +200,7 @@ The pager follows `less` conventions. `?` shows the keys in the pager.
 | `w` | Switch wide code blocks and tables between wrapped (the default) and their natural width, panned with `h`/`l` |
 | `+` `=` / `-` `_` / `0` | Zoom images and diagrams in / out / reset |
 | `Tab` / `Shift-Tab` | Select the next / previous link, scrolling to it |
-| `Enter` | Open the selected link: `#heading` jumps to it, a relative `.md` file opens in the pager, an `http`, `https` or `mailto` link or another local file opens with `open` (`xdg-open` on Linux). Other schemes, programs, scripts and app bundles are not opened |
+| `Enter` | Open the selected link: `#heading` jumps to it, a relative `.md` file opens in the pager, and so does an `http(s)` link to a `.md` file (downloaded; a GitHub file page is read raw, and a failed download is reported on the status line); any other `http`, `https` or `mailto` link or another local file opens with `open` (`xdg-open` on Linux). Other schemes, programs, scripts and app bundles are not opened |
 | `Backspace` `H` | Go back from an opened file or a full-screen diagram |
 | `o` | Open the diagram on screen full screen |
 | `o` `Space` `Esc` `q` | Close the full-screen diagram |

@@ -50,7 +50,7 @@ use std::time::SystemTime;
 
 use crate::render::{self, Document};
 use crate::term::{self, RawMode, Size, Theme};
-use crate::{kitty, panics, progress};
+use crate::{kitty, panics, progress, remote, web};
 
 use keys::read_keys;
 use overlay::Overlay;
@@ -59,11 +59,12 @@ use view::{Kind, View};
 const ENTER: &str = "\x1b[?1049h\x1b[>1u\x1b[?25l\x1b[?7l\x1b[?1007h\x1b[?2031h";
 const LEAVE: &str = "\x1b[?2031l\x1b[?1007l\x1b[?7h\x1b[?25h\x1b[<u\x1b[?1049l";
 
-/// What to lay out: the document, a Markdown file opened from a link, or
-/// one diagram full screen.
+/// What to lay out: the document, a Markdown file opened from a link (on
+/// disk or downloaded), or one diagram full screen.
 pub enum Layout<'a> {
     Document,
     File(&'a Path),
+    Remote { url: &'a str, markdown: &'a str },
     Diagram(&'a str),
 }
 
@@ -371,7 +372,7 @@ impl<'a> Pager<'a> {
         match &self.views[depth].kind {
             Kind::Document => self.file.as_deref(),
             Kind::File(path) => Some(path),
-            Kind::Diagram(_) => None,
+            Kind::Remote { .. } | Kind::Diagram(_) => None,
         }
     }
 
@@ -415,26 +416,41 @@ impl<'a> Pager<'a> {
             self.jump_to(anchor);
             return Ok(());
         }
-        let Some(local) = url.strip_prefix("file://") else {
+        let (target, fragment) = match url.split_once('#') {
+            Some((target, fragment)) => (target, Some(fragment)),
+            None => (url, None),
+        };
+        let kind = if remote::is_remote(target) && links::is_markdown_url(target) {
+            // Downloaded once: a relayout (a resize, a zoom) reuses the text.
+            let url = web::raw_url(target);
+            match web::fetch(&url) {
+                Ok(markdown) => Kind::Remote { url, markdown },
+                Err(e) => {
+                    self.message = Some(format!("Can't download {e}"));
+                    return Ok(());
+                }
+            }
+        } else if let Some(local) = target.strip_prefix("file://") {
+            let path = PathBuf::from(render::percent_decode(local));
+            if !links::is_markdown(&path) {
+                self.message = Some(links::open_file(&path));
+                return Ok(());
+            }
+            if !path.is_file() {
+                self.message = Some(format!("No such file: {}", path.display()));
+                return Ok(());
+            }
+            Kind::File(path)
+        } else {
             self.message = Some(links::open_url(url));
             return Ok(());
         };
-        let (path, fragment) = match local.split_once('#') {
-            Some((path, fragment)) => (path, Some(fragment)),
-            None => (local, None),
+        let time = match &kind {
+            Kind::File(path) => modified(path),
+            _ => None,
         };
-        let path = PathBuf::from(render::percent_decode(path));
-        if !links::is_markdown(&path) {
-            self.message = Some(links::open_file(&path));
-            return Ok(());
-        }
-        if !path.is_file() {
-            self.message = Some(format!("No such file: {}", path.display()));
-            return Ok(());
-        }
-        let time = modified(&path);
-        let doc = render(Layout::File(&path), self.params(1.0));
-        let mut view = View::new(doc, Kind::File(path.clone()));
+        let doc = render(kind.layout(), self.params(1.0));
+        let mut view = View::new(doc, kind);
         view.modified = time;
         self.push(view)?;
         if let Some(anchor) = fragment {
@@ -462,11 +478,7 @@ impl<'a> Pager<'a> {
         // Before the file is read, so a save during the layout is seen.
         let time = self.path(depth).and_then(modified);
         let old = &self.views[depth];
-        let doc = match &old.kind {
-            Kind::Document => render(Layout::Document, params),
-            Kind::File(path) => render(Layout::File(path), params),
-            Kind::Diagram(src) => render(Layout::Diagram(src), params),
-        };
+        let doc = render(old.kind.layout(), params);
         let mut out = free_images(&old.doc);
         out.push_str(&doc.preamble);
         write_out(&out)?;

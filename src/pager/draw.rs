@@ -154,6 +154,7 @@ impl Pager<'_> {
                 || path.display().to_string(),
                 |n| n.to_string_lossy().into_owned(),
             ),
+            Kind::Remote { url, .. } => crate::web::title(url),
             _ => self.title.to_owned(),
         };
         let back = if self.views.len() > 1 {

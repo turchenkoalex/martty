@@ -147,6 +147,9 @@ fn run() -> io::Result<()> {
                 let dir = path.parent().unwrap_or(Path::new("."));
                 render::render(&markdown, &layout_config(dir, None, false))
             }
+            Layout::Remote { url, markdown } => {
+                render::render(markdown, &layout_config(Path::new("."), Some(url), false))
+            }
             Layout::Diagram(source) => {
                 let config = layout_config(&input.base_dir, None, true);
                 render::render(&mermaid_block(source), &config)

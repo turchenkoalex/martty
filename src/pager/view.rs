@@ -5,6 +5,7 @@ use std::time::SystemTime;
 
 use unicode_width::UnicodeWidthChar;
 
+use super::Layout;
 use super::links::{self, Link};
 use super::search::Hit;
 use crate::kitty;
@@ -17,8 +18,22 @@ pub(super) enum Kind {
     Document,
     /// A Markdown file opened from a link.
     File(PathBuf),
+    /// A Markdown file on the web opened from a link, as downloaded from
+    /// `url` (GitHub file pages read raw).
+    Remote { url: String, markdown: String },
     /// One diagram, full screen.
     Diagram(String),
+}
+
+impl Kind {
+    pub(super) fn layout(&self) -> Layout<'_> {
+        match self {
+            Kind::Document => Layout::Document,
+            Kind::File(path) => Layout::File(path),
+            Kind::Remote { url, markdown } => Layout::Remote { url, markdown },
+            Kind::Diagram(source) => Layout::Diagram(source),
+        }
+    }
 }
 
 /// One screenful of content with its own scroll, pan and zoom.

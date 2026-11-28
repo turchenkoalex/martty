@@ -141,6 +141,11 @@ pub(super) fn highlight_all(text: &str, mut ranges: Vec<Range<usize>>) -> String
     out
 }
 
+/// A URL whose path names a Markdown file.
+pub(super) fn is_markdown_url(url: &str) -> bool {
+    is_markdown(Path::new(url.split(['?', '#']).next().unwrap_or(url)))
+}
+
 pub(super) fn is_markdown(path: &Path) -> bool {
     path.extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
@@ -276,6 +281,16 @@ mod tests {
             line(&link("a", "two")),
         ];
         assert_eq!(find(&lines).len(), 2);
+    }
+
+    #[test]
+    fn is_markdown_url_should_look_at_the_path_only() {
+        assert!(is_markdown_url("https://e.com/docs/Spring%20Boot.md"));
+        assert!(is_markdown_url(
+            "https://github.com/o/r/blob/main/README.MD?plain=1#use"
+        ));
+        assert!(!is_markdown_url("https://e.com/page?file=a.md"));
+        assert!(!is_markdown_url("https://e.com/docs/"));
     }
 
     #[test]
