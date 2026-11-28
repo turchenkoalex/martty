@@ -5,7 +5,9 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
-### Added
+## [0.1.13] - 2026-11-28
+
+### New
 
 - **Kotlin, Swift, Dockerfile and more languages are highlighted.** Code blocks use bat's grammars, so `kotlin` (`kt`, `kts`) and the other languages bat knows are colored; TypeScript, TSX and JSX get their own grammar instead of JavaScript's.
 
@@ -159,6 +161,7 @@ The first release of martty, a Markdown viewer built for [Ghostty](https://ghost
 - **A `less`-style pager:** search with highlighted matches, a table of contents, marks, following links (relative `.md` files open in the pager), copying as plain text over OSC 52, following a file as you edit it (`-w`), live re-layout on resize.
 - **Fast on long documents:** images, diagrams and headings are drawn only as they come into view, on all cores, and kept for the session.
 
+[0.1.13]: https://github.com/turchenkoalex/martty/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/turchenkoalex/martty/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/turchenkoalex/martty/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/turchenkoalex/martty/compare/v0.1.9...v0.1.10
