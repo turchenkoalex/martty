@@ -560,9 +560,11 @@ fn render_should_never_pass_escapes_from_the_document() {
     assert!(out.contains("␛]52;c;eA==␇"), "{out:?}");
 }
 
-/// Two 5×1-cell SVG badges in a fresh directory, as `images_config` sizes them.
-fn badges_config() -> Config {
-    let dir = std::env::temp_dir().join(format!("martty-badges-{}", std::process::id()));
+/// Two 5×1-cell SVG badges in a directory of the test's own, as
+/// `images_config` sizes them. Tests run in parallel: a shared directory
+/// would let one read a badge while another rewrites it.
+fn badges_config(test: &str) -> Config {
+    let dir = std::env::temp_dir().join(format!("martty-badges-{}-{test}", std::process::id()));
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="50" height="20"/>"#;
     for name in ["a.svg", "b.svg"] {
         std::fs::create_dir_all(&dir)
@@ -577,7 +579,7 @@ fn badges_config() -> Config {
 
 #[test]
 fn render_should_put_images_of_a_paragraph_side_by_side() {
-    let doc = super::render("![a](a.svg)\n![b](b.svg)", &badges_config());
+    let doc = super::render("![a](a.svg)\n![b](b.svg)", &badges_config("side-by-side"));
     assert_eq!(doc.lines.len(), 1);
     let line = &doc.lines[0].text;
     assert_eq!(
@@ -592,7 +594,7 @@ fn render_should_put_images_of_a_paragraph_side_by_side() {
 fn render_should_wrap_images_that_do_not_fit_one_row() {
     let cfg = Config {
         width: 10,
-        ..badges_config()
+        ..badges_config("wrap")
     };
     let doc = super::render("![a](a.svg) ![b](b.svg)", &cfg);
     assert_eq!(doc.lines.len(), 2);
