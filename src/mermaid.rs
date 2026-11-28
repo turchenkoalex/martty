@@ -6,6 +6,7 @@
 //! rasterizing waits until the pager needs the pixels. Laid out trees are
 //! kept for the session, so a zoom or a resize only rasterizes again.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 
@@ -15,6 +16,7 @@ use crate::cache::{self, Lru};
 use crate::kitty::{self, Transmit};
 use crate::panics;
 use crate::picture::svg;
+use crate::progress::{self, Busy};
 use crate::term::Rgb;
 use merman_svg::to_svg;
 
@@ -122,12 +124,20 @@ pub fn prefetch(sources: &[&str], palette: &Palette) {
     if threads <= 1 {
         return;
     }
+    let busy = Busy::start(&format!("Drawing {} diagrams", sources.len()));
+    let total = sources.len() as u64;
+    let done = AtomicU64::new(0);
     let per_thread = sources.len().div_ceil(threads);
     thread::scope(|s| {
         for chunk in sources.chunks(per_thread) {
+            let (busy, done) = (&busy, &done);
             s.spawn(move || {
                 for source in chunk {
                     let _ = tree(source, palette);
+                    busy.progress(progress::percent(
+                        done.fetch_add(1, Ordering::Relaxed) + 1,
+                        total,
+                    ));
                 }
             });
         }
