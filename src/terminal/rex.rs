@@ -11,6 +11,9 @@ use crate::kitty;
 /// Shown in Rex's lists, and well under the protocol's 2048-byte limit.
 const MAX_MESSAGE_CHARS: usize = 200;
 
+/// The record martty reports to, and who reports it.
+const RECORD: &str = "id=martty:app=martty";
+
 pub struct Rex;
 
 impl Terminal for Rex {
@@ -28,21 +31,24 @@ impl Terminal for Rex {
         (!family.is_empty()).then_some(family)
     }
 
-    /// Reports go to the root record; each replaces it whole, so every one
-    /// carries `app`. `working` is dropped by Rex when martty exits, while
-    /// `done` and `error` stay, marking the tab until the user looks.
+    /// Reports go to martty's own record (`id=martty`), not the root one,
+    /// so the end of the work can remove it without touching the records of
+    /// other programs; an idle record would stay on the tab long after
+    /// martty exited. Each report replaces the record whole, so every one
+    /// carries `app`. `done` and `error` stay, marking the tab until the
+    /// user looks, and are removed by the next run's work.
     fn status(&self, status: Status<'_>) -> String {
         let body = match status {
             Status::Working { what, progress } => {
-                let mut body = format!("state=working:app=martty:msg={}", encode(what));
+                let mut body = format!("state=working:{RECORD}:msg={}", encode(what));
                 if let Some(p) = progress {
                     let _ = write!(body, ":progress={}", p.min(100));
                 }
                 body
             }
-            Status::Idle => "state=idle:app=martty".to_owned(),
-            Status::Done(msg) => format!("state=done:app=martty:msg={}", encode(msg)),
-            Status::Failed(msg) => format!("state=error:app=martty:msg={}", encode(msg)),
+            Status::Idle => "state=clear:id=martty".to_owned(),
+            Status::Done(msg) => format!("state=done:{RECORD}:msg={}", encode(msg)),
+            Status::Failed(msg) => format!("state=error:{RECORD}:msg={}", encode(msg)),
         };
         format!("\x1b]7501;{body}\x1b\\")
     }
@@ -71,19 +77,19 @@ mod tests {
         };
         assert_eq!(
             Rex.status(working(None)),
-            "\x1b]7501;state=working:app=martty:msg=SGk=\x1b\\"
+            "\x1b]7501;state=working:id=martty:app=martty:msg=SGk=\x1b\\"
         );
         assert_eq!(
             Rex.status(working(Some(40))),
-            "\x1b]7501;state=working:app=martty:msg=SGk=:progress=40\x1b\\"
+            "\x1b]7501;state=working:id=martty:app=martty:msg=SGk=:progress=40\x1b\\"
         );
         assert_eq!(
             Rex.status(Status::Idle),
-            "\x1b]7501;state=idle:app=martty\x1b\\"
+            "\x1b]7501;state=clear:id=martty\x1b\\"
         );
         assert_eq!(
             Rex.status(Status::Done("Hi")),
-            "\x1b]7501;state=done:app=martty:msg=SGk=\x1b\\"
+            "\x1b]7501;state=done:id=martty:app=martty:msg=SGk=\x1b\\"
         );
     }
 
@@ -93,7 +99,7 @@ mod tests {
         assert_eq!(
             report,
             format!(
-                "\x1b]7501;state=error:app=martty:msg={}\x1b\\",
+                "\x1b]7501;state=error:id=martty:app=martty:msg={}\x1b\\",
                 kitty::base64(b"a b")
             )
         );
