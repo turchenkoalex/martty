@@ -543,3 +543,27 @@ fn history_should_say_when_there_is_nothing_to_go_back_to() {
     assert!(p.overlay.is_none());
     assert!(p.message.is_some());
 }
+
+#[test]
+fn search_should_skip_line_prefixes_and_keep_panned_lines_whole() {
+    let mut doc = text_doc(&["x"; 5]);
+    let prefix = "\x1b[90m▎ \x1b[0m";
+    doc.lines[1].text = format!("{prefix}▎abcdefghijklmnopqrstuvwxyz");
+    doc.lines[1].prefix_len = prefix.len();
+    doc.lines[1].wide = Some(crate::render::Wide {
+        cols: 27,
+        visible: 10,
+    });
+    let mut p = pager_with(doc, 11);
+    p.view_mut().pan = 3;
+    press(&mut p, "/▎\r".as_bytes());
+    assert_eq!(p.hit_counter().as_deref(), Some("/▎ 1/1"));
+    let mut out = String::new();
+    p.draw(&mut out);
+    let row = out
+        .split("\x1b[2;1H")
+        .nth(1)
+        .and_then(|r| r.split("\x1b[3;1H").next())
+        .unwrap_or_default();
+    assert_eq!(super::view::plain_text(row), "▎ cdefghijkl");
+}

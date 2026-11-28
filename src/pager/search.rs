@@ -56,10 +56,17 @@ fn find_all(view: &View, query: &str) -> Vec<Hit> {
         .iter()
         .enumerate()
         .filter(|(_, l)| l.image.is_none())
+        // Not in the prefix (quote bars, indents): it is not text, and
+        // panning a wide line cuts it at `prefix_len`, which a highlight
+        // inserted inside it would shift.
         .flat_map(|(line, l)| {
-            find_in_line(&l.text, query)
+            let at = l.prefix_len.min(l.text.len());
+            find_in_line(l.text.get(at..).unwrap_or_default(), query)
                 .into_iter()
-                .map(move |range| Hit { line, range })
+                .map(move |r| Hit {
+                    line,
+                    range: r.start + at..r.end + at,
+                })
         })
         .collect();
     // A heading drawn as an image has no text on its lines, so its matches

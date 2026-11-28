@@ -206,6 +206,7 @@ pub fn run(
                     for depth in 0..pager.views.len() {
                         pager.relayout(depth, &mut render)?;
                     }
+                    pager.refresh_hits();
                     dirty = true;
                 }
                 Vec::new()

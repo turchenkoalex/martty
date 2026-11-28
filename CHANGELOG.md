@@ -8,6 +8,8 @@ What changed in each release of martty, newest first. The binaries are on the
 ### Fixed
 
 - **A link selected with `Tab` is highlighted whole during a search.** When the link held a word found by `/`, only that word stayed reversed; now the whole link is.
+- **Search keeps to the text.** `/` no longer matches quote bars and list indents, which could garble a wide code block inside a quote or a list while it was panned.
+- **Search highlights survive a resize.** After the window changes size, the matches and the `3/17` counter stay on screen, instead of coming back only at the next key.
 
 ## [0.1.10] - 2026-11-28
 
