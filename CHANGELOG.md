@@ -5,6 +5,11 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+### Changed
+
+- **Headings are drawn in the text color, in bold.** They were the blue of your theme.
+- **List bullets and numbers are the red of your theme.** They were cyan.
+
 ## [0.1.7] - 2026-11-22
 
 ### Changed

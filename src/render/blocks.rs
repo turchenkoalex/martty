@@ -7,7 +7,7 @@ use super::highlight::highlight;
 use super::layout::Container;
 use super::span::{Span, spans_width};
 use super::wrap::{hard_wrap_spans, wrap};
-use super::{HEADING_COLOR, Heading, Renderer, Source};
+use super::{Heading, Renderer, Source};
 use crate::style::{Color, Style, Underline};
 
 pub(super) struct CodeBlock {
@@ -43,7 +43,6 @@ impl Renderer<'_> {
         };
         for span in &mut spans {
             span.style.bold = true;
-            span.style.fg.get_or_insert(Color::Ansi(HEADING_COLOR));
         }
 
         let big = self.cfg.text_sizing

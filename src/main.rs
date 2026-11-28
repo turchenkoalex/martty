@@ -299,7 +299,7 @@ fn config(
         Some(HeadingImages {
             font: HeadingFont::load()?,
             cell,
-            color: theme.palette[usize::from(render::HEADING_COLOR)].unwrap_or(fg),
+            color: fg,
         })
     });
     let diagrams = cell.map(|cell| Diagrams {

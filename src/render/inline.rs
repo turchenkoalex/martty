@@ -4,7 +4,7 @@ use std::rc::Rc;
 use super::emoji::replace_shortcodes;
 use super::images::PendingImage;
 use super::span::Span;
-use super::{ACCENT, BULLETS, LINK, Renderer};
+use super::{BULLETS, LINK, LIST_MARKER, Renderer};
 use crate::style::{Color, Style, Underline};
 
 pub(super) fn link_style(style: &mut Style, url: &str) {
@@ -143,11 +143,11 @@ impl Renderer<'_> {
             Some(Some(list)) => {
                 let marker = format!("{:>w$}. ", list.next, w = list.width);
                 list.next += 1;
-                Span::new(marker, Style::fg(ACCENT))
+                Span::new(marker, Style::fg(LIST_MARKER))
             }
             _ => {
                 let bullet = BULLETS[depth.saturating_sub(1) % BULLETS.len()];
-                Span::new(format!("{bullet} "), Style::fg(ACCENT))
+                Span::new(format!("{bullet} "), Style::fg(LIST_MARKER))
             }
         }
     }
