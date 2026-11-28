@@ -77,6 +77,7 @@ impl Pager<'_> {
         // Back on a fresh alternate screen: the images freed above are sent
         // again by laying every view out, which also picks up the edits.
         write_out(ENTER)?;
+        self.tab_title = None;
         panics::set_alternate_screen(true);
         for depth in 0..self.views.len() {
             self.relayout(depth, render)?;

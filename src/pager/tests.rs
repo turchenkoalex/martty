@@ -475,3 +475,9 @@ fn s_should_lay_the_view_out_as_source_and_back() {
     assert!(!p.view().source);
     assert_eq!(seen, [true, false]);
 }
+
+#[test]
+fn tab_title_should_drop_control_characters() {
+    assert_eq!(super::tab_title("a\x1b]2;x\x07b.md"), "a]2;xb.md");
+    assert_eq!(super::tab_title(&"x".repeat(500)).len(), 100);
+}

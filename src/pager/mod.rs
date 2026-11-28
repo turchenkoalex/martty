@@ -61,8 +61,14 @@ use keys::read_keys;
 use overlay::Overlay;
 use view::{Kind, View};
 
-const ENTER: &str = "\x1b[?1049h\x1b[>1u\x1b[?25l\x1b[?7l\x1b[?1007h\x1b[?2031h";
-const LEAVE: &str = "\x1b[?2031l\x1b[?1007l\x1b[?7h\x1b[?25h\x1b[<u\x1b[?1049l";
+/// Also saves the tab title on the title stack (XTWINOPS 22), for `LEAVE`.
+const ENTER: &str = "\x1b[?1049h\x1b[>1u\x1b[?25l\x1b[?7l\x1b[?1007h\x1b[?2031h\x1b[22;2t";
+/// Clears the title the pager set (OSC 2), then restores the saved one
+/// (XTWINOPS 23). Rex has no title stack: the tab goes back to its own name.
+const LEAVE: &str =
+    "\x1b]2;\x1b\\\x1b[23;2t\x1b[?2031l\x1b[?1007l\x1b[?7h\x1b[?25h\x1b[<u\x1b[?1049l";
+/// Longest tab title, in chars; a tab shows far less.
+const MAX_TITLE_CHARS: usize = 100;
 
 /// What to lay out: the document, a Markdown file opened from a link (on
 /// disk or downloaded), or one diagram full screen.
@@ -229,6 +235,8 @@ struct Pager<'a> {
     theme: Theme,
     /// Set once the alternate screen is entered; restored on drop.
     active: bool,
+    /// The tab title last set (OSC 2); `None` after entering the screen.
+    tab_title: Option<String>,
 }
 
 impl<'a> Pager<'a> {
@@ -247,6 +255,7 @@ impl<'a> Pager<'a> {
             file: None,
             theme: Theme::default(),
             active: false,
+            tab_title: None,
         }
     }
 
@@ -283,6 +292,11 @@ impl<'a> Pager<'a> {
         } else {
             String::new()
         };
+        let title = tab_title(&self.title_of(self.views.len() - 1));
+        if self.tab_title.as_ref() != Some(&title) {
+            frame.push_str(&format!("\x1b]2;{title}\x1b\\"));
+            self.tab_title = Some(title);
+        }
         self.draw(&mut frame);
         write_out(&frame)
     }
@@ -555,6 +569,15 @@ fn free_images(doc: &Document) -> String {
         kitty::write_delete(&mut out, id);
     }
     out
+}
+
+/// `name` fit for OSC 2: a file name may hold control characters, which
+/// would end the sequence early.
+fn tab_title(name: &str) -> String {
+    name.chars()
+        .filter(|c| !c.is_control())
+        .take(MAX_TITLE_CHARS)
+        .collect()
 }
 
 fn modified(path: &Path) -> Option<SystemTime> {
