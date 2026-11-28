@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use ureq::config::AutoHeaderValue;
 
-use crate::progress::Busy;
+use crate::progress::{self, Busy};
 
 /// Larger than any Markdown file people read in a terminal.
 const MAX_BYTES: u64 = 16 << 20;
@@ -95,17 +95,9 @@ fn read_counting(mut reader: impl Read, total: Option<u64>, busy: &Busy) -> io::
         };
         bytes.extend_from_slice(&chunk[..n]);
         if let Some(total) = total {
-            busy.progress(percent(bytes.len() as u64, total));
+            busy.progress(progress::percent(bytes.len() as u64, total));
         }
     }
-}
-
-/// `done` of `total` in whole percent, at most 100 (a server may send more
-/// than it said).
-fn percent(done: u64, total: u64) -> u8 {
-    u8::try_from(done.saturating_mul(100) / total.max(1))
-        .unwrap_or(100)
-        .min(100)
 }
 
 /// A web page rather than a file: rendered as Markdown it would be a wall
@@ -118,14 +110,6 @@ fn is_page(content_type: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn percent_should_round_down_and_stop_at_100() {
-        assert_eq!(percent(1, 3), 33);
-        assert_eq!(percent(3, 3), 100);
-        assert_eq!(percent(5, 3), 100);
-        assert_eq!(percent(1, 0), 100);
-    }
 
     #[test]
     fn raw_url_should_turn_github_file_pages_into_raw_files() {

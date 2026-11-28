@@ -66,7 +66,7 @@ src/
 ├── mermaid.rs     # merman → SVG → resvg → kitty
 ├── math.rs        # LaTeX → latex-rust SVG → resvg → kitty
 ├── heading.rs     # H1–H3 rasterized with fontdue in the terminal's font or bundled JetBrains Mono
-├── progress.rs    # the terminal's activity indicator during slow layouts and downloads
+├── progress.rs    # one activity indicator for nested busy stretches: layouts, downloads, drawing
 ├── terminal/      # what differs between Ghostty and Rex: the font, activity reports
 ├── panics.rs      # panics in parsers of untrusted input caught; messages kept off the pager screen
 └── pager/         # alternate-screen pager

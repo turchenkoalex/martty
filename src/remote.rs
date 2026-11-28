@@ -138,6 +138,7 @@ mod net {
     use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
 
     use super::{enabled, is_https, is_public, may_be_image, to_prune};
+    use crate::progress::{self, Busy};
 
     /// Distinct remote images one run may load.
     const MAX_IMAGES: usize = 32;
@@ -208,9 +209,29 @@ mod net {
         }
         todo.truncate(MAX_IMAGES.saturating_sub(seen.len()));
         drop(seen);
+        if todo.is_empty() {
+            return;
+        }
+        let busy = Busy::start(&match todo.len() {
+            1 => "Downloading an image".to_owned(),
+            n => format!("Downloading {n} images"),
+        });
+        let total = todo.len() as u64;
+        let done = AtomicU64::new(0);
+        let load_counted = |url: &str| {
+            let data = load(url);
+            busy.progress(progress::percent(
+                done.fetch_add(1, Ordering::Relaxed) + 1,
+                total,
+            ));
+            data
+        };
         for batch in todo.chunks(PARALLEL) {
             let results: Vec<(&str, Option<Vec<u8>>)> = std::thread::scope(|s| {
-                let handles: Vec<_> = batch.iter().map(|u| (*u, s.spawn(|| load(u)))).collect();
+                let handles: Vec<_> = batch
+                    .iter()
+                    .map(|u| (*u, s.spawn(|| load_counted(u))))
+                    .collect();
                 handles
                     .into_iter()
                     .map(|(u, h)| (u, h.join().ok().flatten()))
