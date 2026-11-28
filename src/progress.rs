@@ -6,6 +6,13 @@
 //! there is one indicator for the process, showing the innermost stretch:
 //! its message and, when known, its percentage. When that one ends, the one
 //! around it shows again.
+//!
+//! Reports are written to stdout under this module's lock, from whichever
+//! thread changes the state: the timer, or a worker reporting its share. So
+//! no code may hold stdout's lock (`io::stdout().lock()`) across work that
+//! reports progress, such as `Document::into_ansi` or a layout: the worker
+//! would wait for stdout and the holder for the worker, for ever. Build the
+//! text first, then lock stdout only to write it.
 
 use std::io::{self, IsTerminal, Write};
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -108,7 +115,10 @@ impl Busy {
             // timer's report can't land inside another escape sequence.
             thread::spawn(move || {
                 thread::sleep(DELAY);
-                let report = lock().show(episode, terminal::current());
+                // Written under the lock: once released, a stretch may end
+                // and report idle, which this must not follow.
+                let mut state = lock();
+                let report = state.show(episode, terminal::current());
                 if !report.is_empty() {
                     let _ = write(&report);
                 }
