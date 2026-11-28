@@ -1,9 +1,12 @@
-//! A Markdown document given on the command line as an http(s) URL.
+//! A Markdown document given as an http(s) URL: on the command line, or by
+//! `Enter` on a link to one in the pager.
 //!
-//! Unlike images in a document, the URL comes from the user, so it isn't
-//! fenced in as `remote.rs` fences those: plain http and hosts inside the
-//! network are fine. It is fetched once per run, with no disk cache, and is
-//! independent of `--remote`.
+//! Unlike images in a document, which load as soon as it is opened, these
+//! are fetched only on an explicit request from the user, who sees the
+//! link's URL on the status line before following it. So they aren't fenced
+//! in as `remote.rs` fences images: plain http and hosts inside the network
+//! are fine. Each is fetched once, with no disk cache, and is independent of
+//! `--remote`.
 
 use std::io::{self, Read};
 use std::sync::Arc;
