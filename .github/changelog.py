@@ -4,7 +4,9 @@ the GitHub release notes and the site's changelog page.
 
     changelog.py notes VERSION            release notes for VERSION, to stdout
     changelog.py page TEMPLATE OUTPUT     TEMPLATE with its <!-- changelog -->
-                                          marker replaced by the changelog
+                                          marker replaced by the changelog and
+                                          each <!-- version --> by the latest
+                                          released version
 
 It reads only the Markdown CHANGELOG.md uses: `##`/`###` headings, paragraphs,
 `-` lists (nested by two spaces), **bold**, `code`, [links](url) and fenced
@@ -21,6 +23,7 @@ CHANGELOG = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
 REPO = "https://github.com/turchenkoalex/martty"
 VERSION = re.compile(r"^## \[(?P<version>[^\]]+)\](?: - (?P<date>\S+))?\s*$")
 MARKER = "<!-- changelog -->"
+VERSION_MARKER = "<!-- version -->"
 
 INSTALL = """## Install
 
@@ -160,9 +163,13 @@ def page(template, output):
             f"{blocks(body)}\n</article>"
         )
     text = Path(template).read_text()
-    if MARKER not in text:
-        sys.exit(f"{template} has no {MARKER} marker")
-    Path(output).write_text(text.replace(MARKER, "\n".join(parts)))
+    if MARKER not in text and VERSION_MARKER not in text:
+        sys.exit(f"{template} has no {MARKER} or {VERSION_MARKER} marker")
+    if not found:
+        sys.exit("CHANGELOG.md has no released version")
+    text = text.replace(MARKER, "\n".join(parts))
+    text = text.replace(VERSION_MARKER, html.escape(found[0][0]))
+    Path(output).write_text(text)
 
 
 def main(args):

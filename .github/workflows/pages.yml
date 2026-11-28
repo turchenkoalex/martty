@@ -26,8 +26,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
-      # The changelog page is CHANGELOG.md laid into site/changelog.html.
-      - run: python3 .github/changelog.py page site/changelog.html site/changelog.html
+      # The changelog page is CHANGELOG.md laid into site/changelog.html; the
+      # landing page shows the latest released version from it.
+      - run: |
+          python3 .github/changelog.py page site/changelog.html site/changelog.html
+          python3 .github/changelog.py page site/index.html site/index.html
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site

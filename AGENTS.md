@@ -152,7 +152,9 @@ version bump.
 
 `.github/changelog.py` turns the file into the GitHub release notes (`notes X.Y.Z`, used by
 `release.yml`, which fails on a tag without its section) and the site's changelog page
-(`page`, run by `pages.yml` on `site/changelog.html`). To preview the page:
+(`page`, run by `pages.yml` on `site/changelog.html`). The same `page` run on
+`site/index.html` puts the latest released version in place of each `<!-- version -->`. To
+preview the page:
 `python3 .github/changelog.py page site/changelog.html /tmp/changelog.html`.
 
 ## Testing
