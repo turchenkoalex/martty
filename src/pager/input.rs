@@ -200,6 +200,7 @@ impl Pager<'_> {
             Key::Char('[') => self.heading_step(false),
             Key::Char(']') => self.heading_step(true),
             Key::Char('t') => self.open_toc(),
+            Key::Char('B') => self.open_history(),
             Key::Char('?') => self.overlay = Some(Overlay::Help),
             Key::Char(c @ ('m' | '\'')) => self.pending = Some(*c),
             Key::Char('/') => self.prompt = Some(String::new()),

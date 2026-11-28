@@ -202,6 +202,7 @@ The pager follows `less` conventions. `?` shows the keys in the pager.
 | `Tab` / `Shift-Tab` | Select the next / previous link, scrolling to it |
 | `Enter` | Open the selected link: `#heading` jumps to it, a relative `.md` file opens in the pager, and so does an `http(s)` link to a `.md` file (downloaded; a GitHub file page is read raw, and a failed download is reported on the status line); any other `http`, `https` or `mailto` link or another local file opens with `open` (`xdg-open` on Linux). Other schemes, programs, scripts and app bundles are not opened |
 | `Backspace` `H` | Go back from an opened file or a full-screen diagram |
+| `B` | List the files links led through, the document first, with their paths or URLs: `j`/`k` to pick one, `Enter` to go back to it at the place you left it, `Esc` to close |
 | `o` | Open the diagram on screen full screen |
 | `o` `Space` `Esc` `q` | Close the full-screen diagram |
 | `←` / `→` | In a full-screen diagram: open the previous / next diagram of the document; going back lands on the one shown last |

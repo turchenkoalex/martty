@@ -137,6 +137,8 @@ enum Action {
     Switch(bool),
     /// Go back from a full-screen diagram or an opened file.
     Close,
+    /// Go back to the view at this depth, dropping the ones above (`B`).
+    Return(usize),
     /// Open a link target: `#anchor`, a Markdown file, or anything else
     /// through the system.
     Follow(String),
@@ -338,6 +340,11 @@ impl<'a> Pager<'a> {
             Action::Open(index) => self.open_diagram(*index, render)?,
             Action::Switch(forward) => self.switch_diagram(*forward, render)?,
             Action::Close => self.pop()?,
+            Action::Return(depth) => {
+                while self.views.len() > depth + 1 {
+                    self.pop()?;
+                }
+            }
             Action::Follow(url) => self.follow(url, render)?,
         }
         self.refresh_hits();

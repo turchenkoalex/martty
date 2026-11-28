@@ -324,7 +324,14 @@ fn toc_should_open_at_current_section_and_jump() {
     doc.headings = vec![heading(10, "a"), heading(40, "b"), heading(70, "c")];
     let mut p = pager_with(doc, 11);
     press(&mut p, b"]]t");
-    assert!(matches!(p.overlay, Some(Overlay::Toc { selected: 1, .. })));
+    assert!(matches!(
+        p.overlay,
+        Some(Overlay::List {
+            kind: overlay::List::Toc,
+            selected: 1,
+            ..
+        })
+    ));
     press(&mut p, b"j\r");
     assert!(p.overlay.is_none());
     assert_eq!(p.view().top, 70);
@@ -482,4 +489,47 @@ fn s_should_lay_the_view_out_as_source_and_back() {
 fn tab_title_should_drop_control_characters() {
     assert_eq!(super::tab_title("a\x1b]2;x\x07b.md"), "a]2;xb.md");
     assert_eq!(super::tab_title(&"x".repeat(500)).len(), 100);
+}
+
+/// A pager whose document led through links to `a.md`, `b.md` and `c.md`.
+fn deep_pager(cols: usize) -> Pager<'static> {
+    let mut p = pager(40, 11);
+    p.size.cols = cols;
+    for name in ["a.md", "b.md", "c.md"] {
+        let kind = view::Kind::File(std::path::PathBuf::from(format!("/docs/{name}")));
+        p.views.push(View::new(text_doc(&["x"; 40]), kind));
+    }
+    p
+}
+
+#[test]
+fn history_should_go_back_to_the_picked_view() {
+    let mut p = deep_pager(80);
+    p.views[1].top = 7;
+    press(&mut p, b"B");
+    assert!(matches!(
+        p.overlay,
+        Some(Overlay::List {
+            kind: overlay::List::History,
+            selected: 3,
+            ..
+        })
+    ));
+    p.handle(Key::Char('k'));
+    p.handle(Key::Char('k'));
+    assert_eq!(p.handle(Key::Enter), Action::Return(1));
+    p.apply(Key::Char('B'), &mut no_render).ok();
+    p.apply(Key::Char('k'), &mut no_render).ok();
+    p.apply(Key::Char('k'), &mut no_render).ok();
+    p.apply(Key::Enter, &mut no_render).ok();
+    assert_eq!(p.views.len(), 2);
+    assert_eq!(p.view().top, 7);
+}
+
+#[test]
+fn history_should_say_when_there_is_nothing_to_go_back_to() {
+    let mut p = pager(40, 11);
+    press(&mut p, b"B");
+    assert!(p.overlay.is_none());
+    assert!(p.message.is_some());
 }

@@ -27,7 +27,10 @@ pub const KEYS: &[(&str, &[(&str, &str)])] = &[
             ("/ n N", "search, next / previous match, Esc clears"),
             ("Tab ⇧Tab", "next / previous link on screen"),
             ("Enter", "open the selected link"),
-            ("⌫ H", "back from an opened file or diagram"),
+            (
+                "⌫ H / B",
+                "back from an opened file or diagram / pick how far",
+            ),
         ],
     ),
     (

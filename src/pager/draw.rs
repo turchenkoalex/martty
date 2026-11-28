@@ -4,7 +4,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::Pager;
 use super::links;
-use super::overlay::Overlay;
+use super::overlay::{List, Overlay};
 use super::view::Kind;
 use crate::render::visible_controls;
 
@@ -123,7 +123,16 @@ impl Pager<'_> {
         }
         match (&self.overlay, self.pending) {
             (Some(Overlay::Help), _) => return " Keys  · any key closes".into(),
-            (Some(Overlay::Toc { .. }), _) => {
+            (
+                Some(Overlay::List {
+                    kind: List::History,
+                    ..
+                }),
+                _,
+            ) => {
+                return " Back to  · j/k move · Enter go back · Esc close".into();
+            }
+            (Some(Overlay::List { .. }), _) => {
                 return " Contents  · j/k move · Enter go · Esc close".into();
             }
             (None, Some('m')) => return " Set mark: type a letter".into(),
