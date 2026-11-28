@@ -186,13 +186,15 @@ impl Pager<'_> {
         match key {
             Key::Tab => self.move_link(true, rows),
             Key::BackTab => self.move_link(false, rows),
-            Key::Char('h') | Key::Left => self.pan_by(-step),
-            Key::Char('l') | Key::Right => self.pan_by(step),
+            Key::Char('h') => self.pan_by(-step),
+            Key::Char('l') => self.pan_by(step),
             Key::Char('j' | 'e') | Key::Down | Key::Enter | Key::Ctrl(14) => self.scroll(1, rows),
             Key::Char('k') | Key::Up | Key::Ctrl(16) => self.scroll(-1, rows),
             // `z` pages down as in less.
-            Key::Char(' ' | 'f' | 'z') | Key::PageDown | Key::Ctrl(6) => self.scroll(page, rows),
-            Key::Char('b') | Key::PageUp | Key::Ctrl(2) => self.scroll(-page, rows),
+            Key::Char(' ' | 'f' | 'z') | Key::PageDown | Key::Right | Key::Ctrl(6) => {
+                self.scroll(page, rows)
+            }
+            Key::Char('b') | Key::PageUp | Key::Left | Key::Ctrl(2) => self.scroll(-page, rows),
             Key::Char('d') | Key::Ctrl(4) => self.scroll(page / 2, rows),
             Key::Char('u') | Key::Ctrl(21) => self.scroll(-page / 2, rows),
             Key::Char('g' | '<') | Key::Home => self.jump(0),

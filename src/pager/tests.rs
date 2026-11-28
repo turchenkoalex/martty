@@ -54,6 +54,15 @@ fn scroll_should_stop_at_last_page() {
 }
 
 #[test]
+fn arrows_should_page_down_and_up() {
+    let mut p = pager(100, 11);
+    p.handle(Key::Right);
+    assert_eq!(p.view().top, 10);
+    p.handle(Key::Left);
+    assert_eq!(p.view().top, 0);
+}
+
+#[test]
 fn scroll_should_not_go_above_top() {
     let mut p = pager(100, 11);
     p.handle(Key::PageUp);
@@ -112,7 +121,7 @@ fn pan_should_stop_at_max_pan() {
     }
     let mut p = pager_with(doc, 11);
     for _ in 0..10 {
-        p.handle(Key::Right);
+        p.handle(Key::Char('l'));
     }
     assert_eq!(p.view().pan, 20);
 }

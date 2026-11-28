@@ -12,7 +12,7 @@ pub const KEYS: &[(&str, &[(&str, &str)])] = &[
         "Moving",
         &[
             ("j k ↑ ↓", "line down / up"),
-            ("Space f z b", "page down / up"),
+            ("Space f z b → ←", "page down / up"),
             ("d u", "half page down / up"),
             ("g G", "top / bottom"),
             ("[ ]", "previous / next heading"),
@@ -37,10 +37,7 @@ pub const KEYS: &[(&str, &[(&str, &str)])] = &[
         "Images and diagrams",
         &[
             ("+ - 0", "zoom images and diagrams, reset"),
-            (
-                "h l ← →",
-                "pan wide images, code and tables (h l in a diagram)",
-            ),
+            ("h l", "pan wide images, code and tables"),
             ("w", "wrap wide code and tables, or pan them"),
             ("o", "diagram on screen full screen; o Space Esc close it"),
             ("← →", "full screen: previous / next diagram"),

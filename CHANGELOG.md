@@ -5,6 +5,10 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+### Changed
+
+- **`←` and `→` turn pages.** They page up and down like `b` and `Space`; wide code, tables and images are panned with `h` and `l`. In a full-screen diagram they still go to the previous or next diagram.
+
 ## [0.1.11] - 2026-11-28
 
 ### New

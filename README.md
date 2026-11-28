@@ -187,8 +187,8 @@ The pager follows `less` conventions. `?` shows the keys in the pager.
 |---|---|
 | `j` `e` `↓` `Enter` `Ctrl-N` | Scroll down one line (`Enter` opens the selected link) |
 | `k` `↑` `Ctrl-P` | Scroll up one line |
-| `Space` `f` `z` `PgDn` `Ctrl-F` | Page down |
-| `b` `PgUp` `Ctrl-B` | Page up |
+| `Space` `f` `z` `→` `PgDn` `Ctrl-F` | Page down |
+| `b` `←` `PgUp` `Ctrl-B` | Page up |
 | `d` `Ctrl-D` / `u` `Ctrl-U` | Half page down / up |
 | `g` `<` `Home` / `G` `>` `End` | Go to the top / bottom |
 | `[` / `]` | Previous / next heading |
@@ -196,7 +196,7 @@ The pager follows `less` conventions. `?` shows the keys in the pager.
 | `/` | Search (smart case: case-sensitive only if the query has uppercase letters). Matches are highlighted and the status line counts them, as in `3/17` |
 | `n` / `N` | Next / previous match |
 | `Esc` | Drop the link selection, then the search highlight |
-| `h` `←` / `l` `→` | Pan wide images, diagrams, code and tables left / right (only `h` / `l` in a full-screen diagram) |
+| `h` / `l` | Pan wide images, diagrams, code and tables left / right |
 | `w` | Switch wide code blocks and tables between wrapped (the default) and their natural width, panned with `h`/`l` |
 | `+` `=` / `-` `_` / `0` | Zoom images and diagrams in / out / reset |
 | `Tab` / `Shift-Tab` | Select the next / previous link, scrolling to it |
