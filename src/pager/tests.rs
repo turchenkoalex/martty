@@ -282,6 +282,16 @@ fn search_should_mark_matches_and_esc_clear_them() {
 }
 
 #[test]
+fn selected_link_should_be_marked_whole_over_a_match_inside_it() {
+    let mut p = pager_with(links_doc(), 11);
+    press(&mut p, b"/near\r");
+    press(&mut p, b"\t");
+    let link: Vec<_> = p.view().selected_range(2).into_iter().collect();
+    assert_eq!(link.len(), 1);
+    assert_eq!(p.marked_ranges(2), link);
+}
+
+#[test]
 fn search_should_find_headings_drawn_as_images() {
     let mut doc = text_doc(&["x"; 100]);
     doc.lines[10].text = "Images in quotes".into();

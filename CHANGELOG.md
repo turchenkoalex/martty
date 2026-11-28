@@ -5,6 +5,10 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+### Fixed
+
+- **A link selected with `Tab` is highlighted whole during a search.** When the link held a word found by `/`, only that word stayed reversed; now the whole link is.
+
 ## [0.1.10] - 2026-11-28
 
 ### New

@@ -147,17 +147,24 @@ impl Pager<'_> {
     }
 
     /// Byte ranges to show reversed on line `index`: matches and the
-    /// selected link.
+    /// selected link. A match inside the selected link gives way to it, so
+    /// the whole link is reversed and not just the matched word.
     pub(super) fn marked_ranges(&self, index: usize) -> Vec<Range<usize>> {
         let view = self.view();
+        let selected = view.selected_range(index);
+        let overlaps = |r: &Range<usize>| {
+            selected
+                .as_ref()
+                .is_some_and(|s| r.start < s.end && s.start < r.end)
+        };
         let mut ranges: Vec<Range<usize>> = view
             .hits
             .iter()
             .flat_map(|(_, hits)| hits)
-            .filter(|h| h.line == index && !h.range.is_empty())
+            .filter(|h| h.line == index && !h.range.is_empty() && !overlaps(&h.range))
             .map(|h| h.range.clone())
             .collect();
-        ranges.extend(view.selected_range(index));
+        ranges.extend(selected);
         ranges
     }
 }
