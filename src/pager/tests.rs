@@ -470,7 +470,9 @@ fn s_should_lay_the_view_out_as_source_and_back() {
     };
     p.apply(Key::Char('s'), &mut render).ok();
     assert!(p.view().source);
-    assert!(p.status().contains("source"), "{}", p.status());
+    // Past the message about the switch, the status line keeps saying so.
+    p.message = None;
+    assert!(p.status().contains("  source"), "{}", p.status());
     p.apply(Key::Char('s'), &mut render).ok();
     assert!(!p.view().source);
     assert_eq!(seen, [true, false]);
