@@ -5,15 +5,17 @@ What changed in each release of martty, newest first. The binaries are on the
 
 ## Unreleased
 
+## [0.1.10] - 2026-11-28
+
 ### New
 
+- **The Markdown source in the pager.** `s` shows the document as the Markdown it was written in, highlighted and with line numbers, and `s` again goes back to the rendered view at the same place. Search, `[`/`]`, the table of contents, copying and `-w` work there too.
+- **Back several links at once.** After following links through several files, `B` lists them all, the document first, and `Enter` goes straight back to the one you pick, where you left it.
+- **The tab is named after the document.** The pager sets the tab title to the file it shows, a file opened from a link included, and clears it on exit.
 - **Activity in Rex.** While martty downloads a document or lays out a slow one, Rex shows a spinner on its tab with what it is doing, and an error martty exits with stays marked on the tab. In Ghostty the progress bar now shows during downloads too. Both show how much of a download is done, when the server says its size.
 - **Progress while images download and diagrams are drawn.** With `--remote`, the indicator says how many images are downloading and how many are done, a document with many diagrams counts them as they are drawn, and the pager counts the images it draws as you scroll to them, instead of a bare spinner.
 - **Rex marks the tab when a followed file changes.** With `-w` or `F`, a change to the file marks martty's tab as done in Rex, as a finished build does, so you know to look.
 - **A failed download in the pager marks the tab in Rex.** When `Enter` on a link to a Markdown file on the web can't download it, Rex marks the tab with the error, as well as the status line saying so, until the next key.
-- **The tab is named after the document.** The pager sets the tab title to the file it shows, a file opened from a link included, and clears it on exit.
-- **Back several links at once.** After following links through several files, `B` lists them all, the document first, and `Enter` goes straight back to the one you pick, where you left it.
-- **The Markdown source in the pager.** `s` shows the document as the Markdown it was written in, highlighted and with line numbers, and `s` again goes back to the rendered view at the same place. Search, `[`/`]`, the table of contents, copying and `-w` work there too.
 
 ## [0.1.9] - 2026-11-28
 
@@ -131,6 +133,7 @@ The first release of martty, a Markdown viewer built for [Ghostty](https://ghost
 - **A `less`-style pager:** search with highlighted matches, a table of contents, marks, following links (relative `.md` files open in the pager), copying as plain text over OSC 52, following a file as you edit it (`-w`), live re-layout on resize.
 - **Fast on long documents:** images, diagrams and headings are drawn only as they come into view, on all cores, and kept for the session.
 
+[0.1.10]: https://github.com/turchenkoalex/martty/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/turchenkoalex/martty/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/turchenkoalex/martty/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/turchenkoalex/martty/compare/v0.1.6...v0.1.7
