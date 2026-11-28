@@ -60,6 +60,7 @@ src/
 ├── diacritics.rs  # generated row/column diacritics table, don't edit by hand
 ├── picture/       # image formats: sniffing, JPEG/GIF/WebP decoding, SVG, downscaling, bundled fonts
 ├── remote.rs      # https images, opt-in per run, fenced in; disk cache
+├── web.rs         # a Markdown document given as a URL; GitHub file pages read raw
 ├── mermaid.rs     # merman → SVG → resvg → kitty
 ├── math.rs        # LaTeX → latex-rust SVG → resvg → kitty
 ├── heading.rs     # H1–H3 rasterized with fontdue in Ghostty's font or bundled JetBrains Mono

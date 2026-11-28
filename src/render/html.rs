@@ -161,7 +161,7 @@ impl Renderer<'_> {
             }
             "a" => match attr(attrs, "href") {
                 Some(url) => {
-                    let url = super::links::resolve(&self.cfg.base_dir, url);
+                    let url = super::links::target(self.cfg, url);
                     self.open_tag(name, |s| link_style(s, &url));
                 }
                 None => self.open_tag(name, |_| {}),

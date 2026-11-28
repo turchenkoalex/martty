@@ -112,6 +112,7 @@ pub fn text(styled: bool) -> String {
     );
     title(&mut out, "Usage");
     let _ = writeln!(out, "  martty [options] FILE     view a Markdown file");
+    let _ = writeln!(out, "  martty [options] URL      download one and view it");
     let _ = writeln!(out, "  … | martty [options]      read Markdown from stdin");
     let _ = writeln!(
         out,

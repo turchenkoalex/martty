@@ -1,7 +1,8 @@
 //! martty — a tiny Markdown renderer tuned for Ghostty.
 //!
 //! Usage: `martty [-p|-P] [-w] [--width N] [FILE]` (reads stdin when FILE is
-//! absent or `-`; with neither, prints the help from `help.rs`). Output taller than the screen opens a `less`-like pager;
+//! absent or `-`; with neither, prints the help from `help.rs`; an http(s)
+//! FILE is downloaded, see `web.rs`). Output taller than the screen opens a `less`-like pager;
 //! `-p` forces it, `-P` disables it. `-w` opens the pager and follows changes
 //! to FILE. `--width` lays text out for N columns instead of the terminal
 //! width. `--remote` (or `MARTTY_REMOTE=1`) loads https images; it is off
@@ -25,6 +26,7 @@ mod remote;
 mod render;
 mod style;
 mod term;
+mod web;
 
 use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
@@ -86,18 +88,12 @@ fn run() -> io::Result<()> {
     if args.remote {
         remote::enable();
     }
-    let (mut markdown, base_dir) = read_input(args.file.as_deref())?;
-    let title = args
-        .file
-        .as_deref()
-        .and_then(Path::file_name)
-        .map_or_else(|| "stdin".to_owned(), |n| n.to_string_lossy().into_owned());
-
+    let mut input = read_input(&args)?;
     // Both overlap the terminal probe.
     if io::stdout().is_terminal() {
         HeadingFont::prefetch();
     }
-    render::warm_up(&markdown);
+    render::warm_up(&input.markdown);
     let mut caps = term::probe();
     // Images go too: placeholders carry the image id in their foreground
     // color, and diagrams and image headings are colored anyway. Without a
@@ -108,7 +104,7 @@ fn run() -> io::Result<()> {
     }
     let pending_input = std::mem::take(&mut caps.pending_input);
     let mut next_id = image_id_seed();
-    let file = args.file.as_deref().filter(|f| *f != Path::new("-"));
+    let file = (args.file.as_deref()).filter(|f| *f != Path::new("-") && input.url.is_none());
     let mut render = |layout: Layout<'_>, params: Params| {
         let Params {
             mut size,
@@ -124,18 +120,23 @@ fn run() -> io::Result<()> {
             size.cols = width;
         }
         let first_id = next_id;
+        let layout_config = |dir: &Path, base_url: Option<&str>, fullscreen: bool| {
+            let mut config = config(&caps, &theme, size, dir, first_id, zoom, fullscreen);
+            config.color = color;
+            config.overflow = overflow && !fullscreen;
+            config.base_url = base_url.map(str::to_owned);
+            config
+        };
         let doc = match layout {
             Layout::Document => {
-                let mut config = config(&caps, &theme, size, &base_dir, first_id, zoom, false);
-                config.color = color;
-                config.overflow = overflow;
+                let config = layout_config(&input.base_dir, input.url.as_deref(), false);
                 // Read again on every layout, so following picks up edits;
                 // a file that can't be read right now (mid-save) keeps the
                 // text read before.
                 if let Some(text) = file.and_then(|f| read_text(f).ok()) {
-                    markdown = text;
+                    input.markdown = text;
                 }
-                render::render(&markdown, &config)
+                render::render(&input.markdown, &config)
             }
             Layout::File(path) => {
                 // A link may point at a file that can't be read; say so in
@@ -144,14 +145,10 @@ fn run() -> io::Result<()> {
                     format!("> [!CAUTION]\n> Can't read `{}`: {e}\n", path.display())
                 });
                 let dir = path.parent().unwrap_or(Path::new("."));
-                let mut config = config(&caps, &theme, size, dir, first_id, zoom, false);
-                config.color = color;
-                config.overflow = overflow;
-                render::render(&markdown, &config)
+                render::render(&markdown, &layout_config(dir, None, false))
             }
             Layout::Diagram(source) => {
-                let mut config = config(&caps, &theme, size, &base_dir, first_id, zoom, true);
-                config.color = color;
+                let config = layout_config(&input.base_dir, None, true);
                 render::render(&mermaid_block(source), &config)
             }
         };
@@ -182,7 +179,7 @@ fn run() -> io::Result<()> {
         };
     if page {
         let options = pager::Options {
-            title: &title,
+            title: &input.title,
             file,
             follow: args.follow,
             theme: caps.theme,
@@ -260,22 +257,57 @@ fn parse_width(value: Option<&str>) -> io::Result<usize> {
         })
 }
 
-/// Markdown text plus the directory relative image paths resolve against.
-fn read_input(file: Option<&Path>) -> io::Result<(String, PathBuf)> {
-    match file {
-        Some(path) if path != Path::new("-") => {
-            let text = read_text(path).map_err(|e| with_path(e, path))?;
-            let dir = path
-                .parent()
-                .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
-            Ok((text, dir))
+struct Input {
+    markdown: String,
+    /// Relative image paths resolve against it.
+    base_dir: PathBuf,
+    /// For the pager's status line.
+    title: String,
+    /// What a downloaded document came from.
+    url: Option<String>,
+}
+
+/// FILE, downloaded when it is a URL, or stdin.
+fn read_input(args: &Args) -> io::Result<Input> {
+    let file = args.file.as_deref().filter(|f| *f != Path::new("-"));
+    let url = file
+        .and_then(Path::to_str)
+        .filter(|f| remote::is_remote(f))
+        .map(web::raw_url);
+    if let Some(url) = url {
+        if args.follow {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "-w follows a file, not a URL",
+            ));
         }
-        _ => {
-            let mut buf = Vec::new();
-            io::stdin().read_to_end(&mut buf)?;
-            Ok((lossy(buf), PathBuf::from(".")))
-        }
+        return Ok(Input {
+            markdown: web::fetch(&url)?,
+            base_dir: PathBuf::from("."),
+            title: web::title(&url),
+            url: Some(url),
+        });
     }
+    let Some(path) = file else {
+        let mut buf = Vec::new();
+        io::stdin().read_to_end(&mut buf)?;
+        return Ok(Input {
+            markdown: lossy(buf),
+            base_dir: PathBuf::from("."),
+            title: "stdin".to_owned(),
+            url: None,
+        });
+    };
+    Ok(Input {
+        markdown: read_text(path).map_err(|e| with_path(e, path))?,
+        base_dir: path
+            .parent()
+            .map_or_else(|| PathBuf::from("."), Path::to_path_buf),
+        title: path
+            .file_name()
+            .map_or_else(|| "stdin".to_owned(), |n| n.to_string_lossy().into_owned()),
+        url: None,
+    })
 }
 
 /// `fullscreen` lays out a lone diagram: no cap on its text size.
@@ -348,6 +380,7 @@ fn config(
         math,
         first_image_id,
         base_dir: base_dir.to_path_buf(),
+        base_url: None,
     }
 }
 

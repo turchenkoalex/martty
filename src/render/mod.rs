@@ -84,6 +84,9 @@ pub struct Config {
     /// Relative image paths and links resolve against this (the Markdown
     /// file's directory).
     pub base_dir: PathBuf,
+    /// The URL a downloaded document came from; relative image paths and
+    /// links resolve against it instead of `base_dir`.
+    pub base_url: Option<String>,
 }
 
 pub struct Diagrams {
@@ -155,7 +158,12 @@ pub fn render(markdown: &str, config: &Config) -> Document {
     let events: Vec<Event<'_>> =
         TextMergeStream::new(Parser::new_ext(&markdown, options)).collect();
     if config.images.is_some() {
-        crate::remote::prefetch(&scan::image_urls(&events));
+        let base = config.base_url.as_deref();
+        let urls: Vec<_> = scan::image_urls(&events)
+            .into_iter()
+            .map(|url| links::absolute(base, url))
+            .collect();
+        crate::remote::prefetch(&urls.iter().map(AsRef::as_ref).collect::<Vec<_>>());
     }
     if let Some(d) = &config.diagrams {
         crate::mermaid::prefetch(&scan::mermaid_sources(&events), &d.palette);
@@ -378,7 +386,7 @@ impl<'c> Renderer<'c> {
             Tag::Strong => self.push_style(|s| s.bold = true),
             Tag::Strikethrough => self.push_style(|s| s.strike = true),
             Tag::Link { dest_url, .. } => {
-                let url = links::resolve(&self.cfg.base_dir, &dest_url);
+                let url = links::target(self.cfg, &dest_url);
                 self.push_style(|s| link_style(s, &url));
             }
             Tag::Image { dest_url, .. } => self.start_image(&dest_url),

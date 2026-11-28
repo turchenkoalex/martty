@@ -129,6 +129,7 @@ martty -p short.md          # always open the pager
 martty -P long.md | head    # never open the pager
 martty --width 72 notes.md  # lay out for 72 columns
 martty -w README.md         # reload whenever README.md is saved
+martty https://github.com/owner/repo/blob/main/README.md  # download and view
 martty --help               # options, environment and pager keys
 ```
 
@@ -147,6 +148,12 @@ Run with no file and nothing on stdin, martty prints the same help.
 By default martty prints the document directly. If the output is taller than the screen
 and stdout is a terminal, it opens the pager. Relative image paths are resolved against the
 Markdown file's directory, or against the current directory when reading stdin.
+
+Instead of a file you can pass an `http://` or `https://` URL: martty downloads the
+document (30 s timeout, at most 16 MB) and shows it. A GitHub file page
+(`github.com/OWNER/REPO/blob/REF/PATH`) is read from `raw.githubusercontent.com`.
+Relative links and images in it resolve against the URL; its images still load only with
+`--remote`. `-w` works with files only.
 
 Try the bundled demo to see everything at once:
 

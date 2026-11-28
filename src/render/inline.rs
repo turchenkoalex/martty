@@ -71,11 +71,12 @@ impl Renderer<'_> {
     /// can't be.
     pub(super) fn start_image(&mut self, url: &str) {
         let start = self.inline.len();
+        let url = super::links::absolute(self.cfg.base_url.as_deref(), url);
+        let target = super::links::resolve(&self.cfg.base_dir, &url);
         self.images.push(PendingImage {
-            url: url.to_owned(),
+            url: url.into_owned(),
             alt: start..start,
         });
-        let target = super::links::resolve(&self.cfg.base_dir, url);
         self.push_style(|s| {
             s.link = Some(Rc::from(target));
             s.italic = true;

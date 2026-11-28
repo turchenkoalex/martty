@@ -1,8 +1,74 @@
 //! Link targets and heading anchors.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::Path;
+
+use super::Config;
+
+/// [`resolve`] against the document's URL when it was downloaded, else
+/// against its directory.
+pub(super) fn target(cfg: &Config, url: &str) -> String {
+    resolve(&cfg.base_dir, &absolute(cfg.base_url.as_deref(), url))
+}
+
+/// `url` made absolute against `base`, the URL of a downloaded document;
+/// as it is without one, or when it has a scheme or is a `#fragment`.
+pub(super) fn absolute<'a>(base: Option<&str>, url: &'a str) -> Cow<'a, str> {
+    match base {
+        Some(base) if !url.is_empty() && !url.starts_with('#') && !has_scheme(url) => {
+            Cow::Owned(encode(&join(base, url), |c| c.is_control() || c == ' '))
+        }
+        _ => Cow::Borrowed(url),
+    }
+}
+
+/// RFC 3986 reference resolution, for the references a Markdown file has:
+/// `//host/…`, `/path`, and paths relative to the base's directory.
+fn join(base: &str, url: &str) -> String {
+    let (scheme, rest) = base.split_once("://").unwrap_or(("https", base));
+    if let Some(network) = url.strip_prefix("//") {
+        return format!("{scheme}://{network}");
+    }
+    let host_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (host, path) = rest.split_at(host_end);
+    let joined = if url.starts_with('/') {
+        url.to_owned()
+    } else {
+        let path = path.split(['?', '#']).next().unwrap_or_default();
+        let dir = path.rfind('/').map_or("", |i| &path[..i]);
+        format!("{dir}/{url}")
+    };
+    format!("{scheme}://{host}{}", remove_dots(&joined))
+}
+
+/// `.` and `..` segments of an absolute path applied; `..` stops at the root.
+fn remove_dots(path: &str) -> String {
+    let (path, tail) = path
+        .find(['?', '#'])
+        .map_or((path, ""), |i| path.split_at(i));
+    let segments: Vec<&str> = path.split('/').collect();
+    let mut out: Vec<&str> = Vec::with_capacity(segments.len());
+    for segment in &segments {
+        match *segment {
+            "." => {}
+            ".." => {
+                // The first segment is the empty one before the leading `/`.
+                if out.len() > 1 {
+                    out.pop();
+                }
+            }
+            s => out.push(s),
+        }
+    }
+    let mut joined = out.join("/");
+    if matches!(segments.last(), Some(&("." | ".."))) {
+        joined.push('/');
+    }
+    joined.push_str(tail);
+    joined
+}
 
 /// The URL a link points to, as OSC 8 should carry it: URLs with a scheme
 /// and `#fragment`s as they are, relative paths as absolute `file://` URLs,
@@ -142,6 +208,31 @@ mod tests {
             resolve(Path::new("/"), "https://a\x1b]0;x\x07"),
             "https://a%1B]0;x%07"
         );
+    }
+
+    #[test]
+    fn absolute_should_resolve_against_the_document_url() {
+        let base = Some("https://raw.example.com/o/r/main/docs/Spring%20Boot.md?x=1");
+        let cases = [
+            (
+                "img/a.png",
+                "https://raw.example.com/o/r/main/docs/img/a.png",
+            ),
+            (
+                "../README.md#use",
+                "https://raw.example.com/o/r/main/README.md#use",
+            ),
+            ("./a b.md", "https://raw.example.com/o/r/main/docs/a%20b.md"),
+            ("/top.png", "https://raw.example.com/top.png"),
+            ("//cdn.example.com/x.svg", "https://cdn.example.com/x.svg"),
+            ("../../../../../up.md", "https://raw.example.com/up.md"),
+            ("https://e.com/a", "https://e.com/a"),
+            ("#tables", "#tables"),
+        ];
+        for (url, want) in cases {
+            assert_eq!(absolute(base, url), want, "{url}");
+        }
+        assert_eq!(absolute(None, "img/a.png"), "img/a.png");
     }
 
     #[test]

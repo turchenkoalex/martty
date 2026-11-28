@@ -50,6 +50,7 @@ fn plain_config() -> Config {
         math: None,
         first_image_id: 1,
         base_dir: PathBuf::from("/nonexistent"),
+        base_url: None,
     }
 }
 
@@ -90,6 +91,7 @@ fn render_should_keep_padded_inline_code_attached_to_punctuation() {
         math: None,
         first_image_id: 1,
         base_dir: PathBuf::from("/nonexistent"),
+        base_url: None,
     };
     let out = strip_ansi(&render("a `b c`, d", &cfg));
     assert_eq!(out, "a \u{a0}b c\u{a0}, d\n");
@@ -112,6 +114,7 @@ fn images_config() -> Config {
         math: None,
         first_image_id: 1,
         base_dir: PathBuf::from("/nonexistent"),
+        base_url: None,
     }
 }
 
